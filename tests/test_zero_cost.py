@@ -31,4 +31,4 @@ def test_requirements_exclude_hosted_model_sdks() -> None:
 
 def test_large_or_local_only_artifacts_are_ignored() -> None:
     ignored = set((ROOT / ".gitignore").read_text().splitlines())
-    assert {".claude/", "data/", "logs/", "results/"} <= ignored
+    assert {".claude/", "/data/", "logs/", "results/"} <= ignored

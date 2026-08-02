@@ -8,10 +8,12 @@ demand determines the demand quantile to provision. Forecasts therefore expose c
 quantiles—not a single point—and every later capacity decision records the evidence and
 assumptions that produced it.
 
-The project is at **M0: the tested system spine**. It currently provides zero-cost configuration,
-UTC-safe time handling, the canonical provenance/workload/demand schema, Alembic parity, and a
-strict CI gate. Forecasting, calibration, replay control, and specialist arbitration land as
-separately tested milestones; the public status is tracked in [docs/ROADMAP.md](docs/ROADMAP.md).
+The tested M0 system spine and M1 demand layer are complete. A validated, immutable
+`DemandSeries` unifies deterministic labelled regimes and the real Azure Functions 2019 wide
+trace, with explicit missing-point quality, reproducible cohort selection, checksum-verified
+fetching, and idempotent persistence. Forecasting, calibration, replay control, and specialist
+arbitration land as separately tested milestones; public status is tracked in
+[docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Principles
 
@@ -27,6 +29,8 @@ make env
 conda activate delphi
 make install
 make check
+make fetch-azure    # 136 MB CC-BY trace, checksum-verified into ignored data/
+make ingest-azure   # seeded top-volume + decile-stratified cohort into Postgres
 ```
 
 Postgres uses host port `5436`, keeping it separate from the sibling portfolio services:
@@ -57,4 +61,3 @@ public trace / synthetic demand
 DELPHI is a replay and decision-support system. It does not control Kubernetes, cloud accounts,
 or production infrastructure. Simulated savings are directional under an explicit open-loop
 assumption; they are never presented as measured production savings.
-
