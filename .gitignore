@@ -12,10 +12,9 @@ htmlcov/
 dist/
 build/
 *.egg-info/
-data/
+/data/
 logs/
 results/
 *.db
 *.sqlite
 *.sqlite3
-

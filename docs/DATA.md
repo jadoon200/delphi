@@ -11,6 +11,11 @@ cohort rules, and small test fixtures are committed; raw data remains under igno
 | Bitbrains GWA-T-12 | terms not currently verifiable; canonical host unavailable | 5 minutes | optional multi-resource trace |
 | Alibaba cluster traces | no explicit licence found as of 2026-08-03; data will not be redistributed | event/hourly | gated, optional extension |
 
+The Azure evaluation cohort is selected from day 1 using the 20 highest-volume functions plus
+two seeded samples from each remaining invocation-volume decile (`seed=20260802`). Selection is
+therefore reproducible without claiming that the busiest functions represent the full trace.
+Functions absent on a later day receive 1,440 explicit `is_imputed=true`, `quality=0` points.
+
 Retrieval date, byte size, SHA-256, exact citation, and cohort-selection seed are added when a
 source is fetched or selected. An unverified licence is a stop condition, not permission to omit
 the record.

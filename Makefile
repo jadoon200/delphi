@@ -1,4 +1,4 @@
-.PHONY: env install lint typecheck test check up down migrate
+.PHONY: env install lint typecheck test check up down migrate fetch-azure ingest-azure
 
 env:
 	conda create -y -n delphi python=3.12
@@ -29,3 +29,8 @@ down:
 migrate:
 	alembic upgrade head
 
+fetch-azure:
+	python scripts/fetch_azure_functions.py
+
+ingest-azure:
+	python scripts/ingest_azure_functions.py
