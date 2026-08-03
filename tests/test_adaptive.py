@@ -231,3 +231,72 @@ def test_pacer_mirrors_the_clamped_plan_not_the_raw_request() -> None:
     # every emitted value must already be inside the band, so the final clamp is a no-op
     served = apply_actuation_delay(plan, profile)
     assert served.min() >= 4 and served.max() <= 6
+
+
+def test_c7_without_calibration_is_exactly_the_incumbent_recommender() -> None:
+    """The ablation is meaningless unless the uncalibrated arm reduces to the baseline.
+
+    A margin mismatch between the two once made C7 look better purely by provisioning
+    less; this test exists so that cannot recur silently.
+    """
+    from delphi.control.adaptive import NewsvendorPercentileController
+    from delphi.control.controllers import PercentileRecommender
+
+    context = _setup()
+    derived = NewsvendorPercentileController(
+        ratio=CostRatio.from_quantile(0.95),
+        window_steps=48,
+        half_life_steps=24,
+        margin=0.0,
+        calibrate=False,
+    ).plan(context)
+    incumbent = PercentileRecommender(
+        window_steps=48, percentile=0.95, half_life_steps=24, margin=0.0
+    ).plan(context)
+    assert np.array_equal(derived, incumbent)
+
+
+def test_c7_target_follows_the_price_ratio() -> None:
+    from delphi.control.adaptive import NewsvendorPercentileController
+
+    context = _setup()
+    means = {}
+    for quantile in (0.5, 0.9, 0.99):
+        plan = NewsvendorPercentileController(
+            ratio=CostRatio.from_quantile(quantile),
+            window_steps=48,
+            half_life_steps=24,
+            margin=0.0,
+            calibrate=False,
+        ).plan(context)
+        means[quantile] = float(np.mean(plan[SEASON * 12 :]))
+    assert means[0.5] <= means[0.9] <= means[0.99], means
+
+
+def test_c7_never_reads_the_step_it_is_deciding() -> None:
+    from delphi.control.adaptive import NewsvendorPercentileController
+
+    context = _setup()
+    controller = NewsvendorPercentileController(
+        ratio=CostRatio.from_quantile(0.9), window_steps=48, half_life_steps=24
+    )
+    before = controller.plan(context)
+    poisoned = context.demand.copy()
+    cut = len(poisoned) - SEASON
+    poisoned[cut:] = 10_000.0
+    tampered = ControlContext(
+        series=type(context.series)(
+            workload_id=context.series.workload_id,
+            source_id=context.series.source_id,
+            resource_kind=context.series.resource_kind,
+            unit=context.series.unit,
+            step_seconds=context.series.step_seconds,
+            timestamps=context.series.timestamps,
+            values=poisoned,
+            is_imputed=context.series.is_imputed,
+            quality=context.series.quality,
+        ),
+        profile=context.profile,
+        start_step=context.start_step,
+    )
+    assert np.array_equal(before[:cut], controller.plan(tampered)[:cut])

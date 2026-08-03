@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import numpy.typing as npt
 
-from delphi.control.controllers import ControlContext, _replicas_for
+from delphi.control.controllers import ControlContext, PercentileRecommender, _replicas_for
 from delphi.control.newsvendor import CostRatio, interpolate_quantile
 from delphi.control.simulator import clamp_plan
 from delphi.forecast.calibration import AdaptiveConformalCalibrator
@@ -266,6 +266,90 @@ class BudgetPacedController:
             score_window=self.score_window,
             aci_target_coverage=base,
         )
+
+
+@dataclass(frozen=True)
+class NewsvendorPercentileController:
+    """C7 — the incumbent's predictor, with the target derived from prices.
+
+    Measured on the Azure LLM inference traces (2026-08-04): a sliding-window percentile
+    recommender beat every explicit forecaster tried — seasonal-naive, persistence and
+    drift — at all four cold-start settings on both traces. The reason is in the data:
+    GPU-work autocorrelation is 0.989 at one minute and 0.730 at one day, so *recent load*
+    carries almost all the signal and an explicit model mostly adds its own error on top.
+
+    The honest conclusion is not that the newsvendor idea fails — it is that it was
+    attached to the wrong predictor. **A percentile recommender is already a forecaster**,
+    and a strong one; what it has never had is a principled way to choose *which*
+    percentile. That choice is normally convention (VPA ships p95).
+
+    So this keeps the winning predictor and replaces only the arbitrary part:
+    ``q* = C_u / (C_u + C_o)`` sets the percentile, and ACI keeps it honest under drift.
+    The claim under test narrows from "forecasting helps" to "deriving the target from
+    prices helps" — which is the claim the project actually wanted to make.
+    """
+
+    ratio: CostRatio
+    window_steps: int = 240
+    half_life_steps: int = 120
+    gamma: float = 0.01
+    calibrate: bool = True
+    margin: float = 0.0
+
+    def __post_init__(self) -> None:
+        if self.window_steps < 1 or self.half_life_steps < 1:
+            raise ValueError("window and half-life must be positive")
+        if self.margin < 0:
+            raise ValueError("margin cannot be negative")
+
+    @property
+    def controller_id(self) -> str:
+        suffix = "aci" if self.calibrate else "raw"
+        return (
+            f"newsvendor_percentile:q*={self.ratio.critical_ratio:.4f}:"
+            f"w={self.window_steps}:{suffix}:v1"
+        )
+
+    @property
+    def target_quantile(self) -> float:
+        return self.ratio.critical_ratio
+
+    def plan(self, context: ControlContext) -> IntArray:
+        profile = context.profile
+        demand = context.demand
+        quantile = self.ratio.critical_ratio
+        base = PercentileRecommender(
+            window_steps=self.window_steps,
+            percentile=quantile,
+            half_life_steps=self.half_life_steps,
+            margin=self.margin,
+        ).plan(context)
+        if not self.calibrate:
+            return base
+
+        # Online conformal correction on the recommender's own residuals: it is a predictor
+        # like any other, so its coverage can drift and can be corrected.
+        per_replica = profile.capacity_per_replica * profile.utilisation_target
+        predicted = base.astype(np.float64) * per_replica
+        warmup = slice(0, context.start_step)
+        residuals = demand[warmup] - predicted[warmup]
+        calibrator = AdaptiveConformalCalibrator(
+            residuals if len(residuals) else np.zeros(1, dtype=np.float64),
+            target_coverage=quantile,
+            gamma=self.gamma,
+            score_window=max(self.window_steps, 2),
+        )
+        requested = base.copy()
+        for step in range(context.start_step, len(demand)):
+            correction = calibrator.current_correction()
+            requested[step] = _replicas_for(max(float(predicted[step]) + correction, 0.0), profile)
+            # the outcome of the previous step is observable now, and only now
+            calibrator.observe(
+                timestamp=context.series.timestamps[step - 1],
+                raw_prediction=float(predicted[step - 1]),
+                actual=float(demand[step - 1]),
+            )
+        return clamp_plan(requested, profile)
 
 
 @dataclass(frozen=True)

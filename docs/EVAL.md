@@ -376,3 +376,108 @@ before it is believed.
   error can dominate signal error.
 - **Correlation of 0.9961 coexists with 39% under-provisioning** in the tail. Correlation is
   the wrong diagnostic for a capacity signal.
+
+---
+
+# Does forecasting help at all? (2026-08-04)
+
+The honest answer, and the reason the project's claim changed.
+
+## The wrong benchmark
+
+Every earlier cold-start sweep compared proactive control against **reactive HPA**. That is
+a strawman: everyone already knows threshold-reactive scaling is bad. The real incumbent is
+the sliding-window percentile recommender that Borg Autopilot and Kubernetes VPA ship.
+
+Putting every family on one frontier, with the incumbent given its own tuning dimension
+(4 window lengths × 7 percentiles = 28 configurations, versus 7 for each other arm):
+
+| trace | cold start | forecast points in usable region (≤10% viol.) | beats percentile @ ≤5%? |
+|---|---:|---:|:--:|
+| `code` | 60 s | 0 | **no** |
+| `code` | 240 s | 0 | **no** |
+| `code` | 600 s | 0 | **no** |
+| `code` | 1200 s | 0 | **no** |
+| `conv` | 60 s | 2 | **no** |
+| `conv` | 240 s | 1 | **no** |
+| `conv` | 600 s | 1 | **no** |
+| `conv` | 1200 s | 0 | **no** |
+
+**0 of 8.** And the gap *widens* with cold start — 11.5% → 15.8% → 27.2% → 24.1% more
+expensive at a matched ≤5% violation rate — the opposite of the registered prediction.
+
+A methodological note on the verdict metric: counting raw Pareto points initially reported
+"YES" in every setting, because a controller that is very cheap and very unsafe is
+non-dominated simply by being more reckless than anything else. `newsvendor` appeared on
+the frontier at a **0.5686** violation rate. The metric was changed to count only the
+operationally usable region and to headline cost at a matched violation rate.
+
+## Why — and it is not subtle
+
+| trace | horizon | seasonal-naive (day-ago) MASE | trailing-mean MASE | winner |
+|---|---:|---:|---:|---|
+| `code` | 4 bins | 5.807 | **2.129** | trailing |
+| `code` | 20 bins | 5.812 | **2.737** | trailing |
+| `conv` | 4 bins | 3.637 | **1.303** | trailing |
+| `conv` | 20 bins | 3.632 | **1.566** | trailing |
+
+Autocorrelation of GPU work:
+
+| trace | lag 1 min | lag 10 min | lag 1 h | lag 1 day |
+|---|---:|---:|---:|---:|
+| `code` | 0.989 | 0.981 | 0.933 | 0.730 |
+| `conv` | 0.961 | 0.940 | 0.866 | **0.349** |
+
+**Recent load carries almost all the signal; same-time-yesterday carries much less.** Every
+GPU experiment had used `SeasonalNaiveForecaster(1440)`, which throws the strong signal
+away. The percentile recommender wins because **it is itself a short-range forecaster**.
+
+Retested with three predictors that do use recent load — persistence, drift, and the
+seasonal model — the incumbent still won at every setting. **The conclusion is robust
+across four forecasters, so it is not an artefact of one bad model choice.**
+
+## What survives: the decision layer, not the forecasting layer
+
+A percentile recommender is a forecaster. What it has never had is a principled way to
+choose *which* percentile — VPA ships p95 by convention. That is exactly the gap the
+newsvendor identity fills, and it is orthogonal to which predictor sits underneath.
+
+**C7** keeps the winning predictor and replaces only the arbitrary part: `q*` sets the
+percentile, ACI keeps it honest. Against the p95 convention, with margins matched and
+total economic cost priced at the operator's own `C_u`:
+
+| trace / cold start | C7 wins | ties | losses |
+|---|---:|---:|---:|
+| `code` @ 240 s | 6 | 0 | 0 |
+| `code` @ 1200 s | 5 | 1 | 0 |
+| `conv` @ 240 s | 6 | 0 | 0 |
+| `conv` @ 1200 s | 2 | 0 | **4** |
+
+**19 wins, 1 tie, 4 losses of 24.** Largest gain −$2,152 (`code` @ 240 s, `C_u/C_o` = 99);
+largest loss +$593 (`conv` @ 1200 s, same ratio). The losses cluster where ACI's correction
+hurts rather than helps.
+
+**A second instrument artefact, caught before publication.** The first version of this
+comparison had C7 at `margin=0.0` against a convention baseline at `PercentileRecommender`'s
+default `margin=0.15`. C7 was simply buying 15% less capacity, and the "wins" were largely
+that. A regression test now asserts that C7 with calibration disabled is **byte-identical**
+to the plain recommender, so the ablation cannot silently drift again.
+
+Decomposing at `C_u/C_o = 19`, where `q*` equals the 0.95 convention exactly and any
+difference must be ACI alone: −$438, +$1, −$23, +$176 across the four settings. **ACI is
+roughly neutral; the value is in the derived target, not the calibration.**
+
+## The answer
+
+**Forecasting, in the sense of bolting an explicit predictive model onto capacity control,
+does not help on these traces.** A trailing percentile is already a near-optimal predictor
+for load with 0.98 minute-scale autocorrelation, and an explicit model mostly adds its own
+error.
+
+**Deriving the target from prices does help** — 19 of 24 settings, and the mechanism is
+understood rather than assumed.
+
+So the project's claim narrows and sharpens: DELPHI is not "forecasting for capacity". It
+is **a decision layer that tells you which quantile to buy, on top of whatever predictor
+your data actually rewards** — which on these traces is the boring one already shipping in
+Kubernetes.
