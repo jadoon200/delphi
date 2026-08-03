@@ -72,3 +72,21 @@ the archive.
 The weekly seasonal baseline is strongest on real-trace MASE (`0.330`), while LightGBM has the
 best native-quantile WQL (`0.022`). Near-universal p95 over-coverage on the real slice and severe
 under-coverage in some synthetic regimes show why raw intervals cannot be treated as calibrated.
+
+## M3 calibration under drift
+
+This experiment starts the test interval at a labelled synthetic level shift. Gamma is selected
+once on the preceding validation stream from `{0.001, 0.005, 0.01, 0.02, 0.05}`; it is not tuned
+on the test trace. Recovery is the first point at which trailing 24-hour coverage returns within
+five percentage points of nominal p95. Run `make evaluate-calibration` to reproduce it.
+
+| Method | p95 coverage | Mean p95 | Recovery steps (24 h window) |
+|---|---:|---:|---:|
+| `raw` | 0.906 | 98.751 | 46 |
+| `split_conformal` | 0.903 | 98.505 | 46 |
+| `aci_gamma_0.05` | 0.927 | 102.122 | 28 |
+
+Static split conformal does not survive the distribution shift in this slice: its validation
+correction slightly lowers test coverage. ACI remains below nominal over the full transient but
+cuts recovery time by 18 steps. Coverage is retained observation-by-observation, not only as the
+three scalar summaries above.
