@@ -1,4 +1,4 @@
-.PHONY: env install lint typecheck test check up down migrate fetch-azure ingest-azure evaluate
+.PHONY: env install lint typecheck test check up down migrate fetch-azure ingest-azure evaluate evaluate-calibration
 
 env:
 	conda create -y -n delphi python=3.12
@@ -37,3 +37,6 @@ ingest-azure:
 
 evaluate:
 	python scripts/evaluate_baselines.py
+
+evaluate-calibration:
+	python scripts/evaluate_calibration.py
