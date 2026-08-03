@@ -190,3 +190,44 @@ def test_pacing_changes_the_plan_but_keeps_it_feasible() -> None:
     assert not np.array_equal(unpaced, paced)
     assert paced.min() >= context.profile.min_replicas
     assert paced.max() <= context.profile.max_replicas
+
+
+def test_pacer_mirrors_the_clamped_plan_not_the_raw_request() -> None:
+    """A bounded replica band must be visible to the controller's own feedback loop.
+
+    If the internal actuation mirror runs on unclamped requests, the pacer counts
+    violations that the platform's replica band made impossible, and then over-corrects
+    for failures that never happened.
+    """
+    from delphi.control.simulator import apply_actuation_delay
+
+    series = generate_synthetic(
+        "clean_daily",
+        periods=SEASON * 30,
+        step_seconds=3600,
+        start=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    profile = CapacityProfile(
+        workload_id="w",
+        step_seconds=3600,
+        capacity_per_replica=8.0,
+        startup_seconds=3600.0,
+        teardown_seconds=3600.0,
+        utilisation_target=1.0,
+        min_replicas=4,
+        max_replicas=6,
+        scale_to_zero=False,
+    )
+    context = ControlContext(series=series, profile=profile, start_step=SEASON * 8)
+    plan = NewsvendorController(
+        forecaster=SeasonalNaiveForecaster(SEASON),
+        ratio=CostRatio.from_quantile(0.99),
+        pace_budget=True,
+        refit_stride=SEASON,
+        score_window=SEASON * 4,
+    ).plan(context)
+
+    assert plan.min() >= 4 and plan.max() <= 6
+    # every emitted value must already be inside the band, so the final clamp is a no-op
+    served = apply_actuation_delay(plan, profile)
+    assert served.min() >= 4 and served.max() <= 6

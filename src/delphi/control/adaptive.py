@@ -109,8 +109,19 @@ def _plan_calibrated(
     total = len(demand)
     requested = np.empty(total, dtype=np.int64)
 
+    def _clamped(replicas: int) -> int:
+        """Clamp at assignment, not only at the end.
+
+        The pacer reconstructs what its own past requests would actually have served, so
+        it has to see the values the platform will honour. Mirroring an unclamped plan
+        makes it count violations that a bounded replica band could never have produced,
+        and it then over-corrects for them.
+        """
+        bounded = int(np.clip(replicas, profile.min_replicas, profile.max_replicas))
+        return bounded if profile.scale_to_zero else max(bounded, 1)
+
     warmup = demand[: context.start_step]
-    requested[:] = _replicas_for(float(np.quantile(warmup, 0.95)), profile)
+    requested[:] = _clamped(_replicas_for(float(np.quantile(warmup, 0.95)), profile))
 
     calibrator: AdaptiveConformalCalibrator | None = None
     # raw forecast value emitted for each step, so its residual can be scored once the
@@ -167,7 +178,7 @@ def _plan_calibrated(
             row = forecast.quantile_values[lead + offset]
             raw = interpolate_quantile(levels, row, quantile)
             correction = calibrator.current_correction()
-            requested[target_step] = _replicas_for(max(raw + correction, 0.0), profile)
+            requested[target_step] = _clamped(_replicas_for(max(raw + correction, 0.0), profile))
             raw_for_step[target_step] = raw
 
             # advance our mirror of the platform's actuation lag one step
