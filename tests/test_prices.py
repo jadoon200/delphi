@@ -163,3 +163,21 @@ def test_impossible_discounts_are_refused() -> None:
             retrieved_at=RETRIEVED,
             discount_multiplier=1.5,
         )
+
+
+@respx.mock
+def test_top_is_not_sent_because_the_api_ignores_it() -> None:
+    """Verified live 2026-08-03: the endpoint returns a full page regardless of $top.
+
+    Sending it would imply a server-side bound the service does not honour.
+    """
+    route = respx.get(RETAIL_PRICES_URL).mock(return_value=httpx.Response(200, json=PAYLOAD))
+    fetch_retail_prices(limit=1)
+    assert "$top" not in str(route.calls[0].request.url)
+
+
+@respx.mock
+def test_limit_truncates_client_side() -> None:
+    respx.get(RETAIL_PRICES_URL).mock(return_value=httpx.Response(200, json=PAYLOAD))
+    assert len(fetch_retail_prices(limit=2)) == 2
+    assert len(fetch_retail_prices()) == 3

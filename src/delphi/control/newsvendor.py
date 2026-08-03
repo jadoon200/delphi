@@ -70,10 +70,6 @@ class CostRatio:
         )
 
 
-def newsvendor_quantile(ratio: CostRatio) -> float:
-    return ratio.critical_ratio
-
-
 @dataclass(frozen=True)
 class SizingDecision:
     """One capacity choice, with the reasoning that produced it kept attached."""

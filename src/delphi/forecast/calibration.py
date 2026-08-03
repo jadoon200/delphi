@@ -294,11 +294,6 @@ class AdaptiveConformalCalibrator:
         """
         return finite_sample_quantile(np.asarray(self._scores, dtype=np.float64), 1 - self.alpha)
 
-    def is_saturated(self) -> bool:
-        """Whether the score window can still express the current confidence level."""
-        _, saturated = conformal_rank(len(self._scores), 1 - self.alpha)
-        return saturated
-
     def observe(
         self,
         *,

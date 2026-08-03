@@ -22,7 +22,7 @@ import numpy.typing as npt
 
 from delphi.control.controllers import ControlContext, _replicas_for
 from delphi.control.newsvendor import CostRatio, interpolate_quantile
-from delphi.control.simulator import CapacityProfile, clamp_plan
+from delphi.control.simulator import clamp_plan
 from delphi.forecast.calibration import AdaptiveConformalCalibrator
 from delphi.forecast.contracts import QuantileForecaster
 
@@ -320,8 +320,3 @@ class NewsvendorController:
             score_window=self.score_window,
             aci_target_coverage=target,
         )
-
-
-def size_for_profile(demand: float, profile: CapacityProfile) -> int:
-    """Public wrapper so callers outside this module need not import a private helper."""
-    return _replicas_for(demand, profile)

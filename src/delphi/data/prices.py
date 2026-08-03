@@ -120,17 +120,23 @@ def fetch_retail_prices(
     region: str = "southeastasia",
     service_name: str = "Virtual Machines",
     sku_contains: str | None = None,
-    top: int = 100,
+    limit: int | None = None,
     timeout: float = 30.0,
     client: httpx.Client | None = None,
 ) -> list[RetailPrice]:
-    """Fetch current retail prices. No API key, no account, no cost."""
+    """Fetch current retail prices. No API key, no account, no cost.
+
+    ``limit`` truncates **client-side**. Verified against the live endpoint on 2026-08-03:
+    the API ignores OData ``$top`` and returns a fixed page of up to 1000 items with a
+    ``NextPageLink`` for the rest. Sending ``$top`` would imply a server-side bound the
+    service does not honour, so it is not sent. Only the first page is read — enough for
+    picking a representative SKU price, and it keeps one call to one free endpoint.
+    """
     params = {
         "api-version": API_VERSION,
         "$filter": build_filter(
             region=region, service_name=service_name, sku_contains=sku_contains
         ),
-        "$top": str(top),
     }
     retrieved_at = utc_now()
     owned = client is None
@@ -138,10 +144,11 @@ def fetch_retail_prices(
     try:
         response = session.get(RETAIL_PRICES_URL, params=params)
         response.raise_for_status()
-        return parse_price_items(response.json(), retrieved_at=retrieved_at)
+        prices = parse_price_items(response.json(), retrieved_at=retrieved_at)
     finally:
         if owned:
             session.close()
+    return prices if limit is None else prices[:limit]
 
 
 def cheapest_hourly(prices: list[RetailPrice]) -> RetailPrice:
