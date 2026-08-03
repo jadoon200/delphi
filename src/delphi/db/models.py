@@ -6,7 +6,6 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     Date,
-    DateTime,
     Float,
     ForeignKey,
     Index,
@@ -16,7 +15,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
-from delphi.db.base import Base
+from delphi.db.base import Base, UTCDateTime
 from delphi.timeutil import utc_now
 
 
@@ -32,7 +31,7 @@ class DemandSource(Base):
     citation: Mapped[str | None] = mapped_column(Text())
     url: Mapped[str] = mapped_column(String(2048))
     sha256: Mapped[str | None] = mapped_column(String(64))
-    retrieved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    retrieved_at: Mapped[datetime] = mapped_column(UTCDateTime())
     terms_note: Mapped[str] = mapped_column(Text(), default="")
     epoch_assumption: Mapped[str] = mapped_column(Text())
 
@@ -61,7 +60,7 @@ class WorkloadProfile(Base):
     scale_to_zero: Mapped[bool] = mapped_column(Boolean(), default=False)
     tier: Mapped[str] = mapped_column(String(32))
     deadline_slack_seconds: Mapped[float | None] = mapped_column(Float())
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utc_now)
 
 
 class DemandPoint(Base):
@@ -77,7 +76,7 @@ class DemandPoint(Base):
     workload_id: Mapped[str] = mapped_column(
         ForeignKey("workload_profiles.workload_id"), primary_key=True
     )
-    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    ts: Mapped[datetime] = mapped_column(UTCDateTime(), primary_key=True)
     value: Mapped[float] = mapped_column(Float())
     is_imputed: Mapped[bool] = mapped_column(Boolean(), default=False)
     quality: Mapped[float] = mapped_column(Float(), default=1.0)
@@ -89,7 +88,7 @@ class CapacityEvent(Base):
 
     event_id: Mapped[int] = mapped_column(Integer(), primary_key=True, autoincrement=True)
     workload_id: Mapped[str] = mapped_column(ForeignKey("workload_profiles.workload_id"))
-    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    ts: Mapped[datetime] = mapped_column(UTCDateTime())
     replicas_before: Mapped[int] = mapped_column(Integer())
     replicas_after: Mapped[int] = mapped_column(Integer())
     reason: Mapped[str] = mapped_column(String(128))
@@ -107,7 +106,7 @@ class PricePoint(Base):
     unit: Mapped[str] = mapped_column(String(64))
     price: Mapped[float] = mapped_column(Float())
     currency: Mapped[str] = mapped_column(String(8))
-    retrieved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    retrieved_at: Mapped[datetime] = mapped_column(UTCDateTime())
     source_id: Mapped[str] = mapped_column(ForeignKey("demand_sources.source_id"))
 
 
@@ -117,7 +116,7 @@ class CarbonPoint(Base):
 
     carbon_id: Mapped[int] = mapped_column(Integer(), primary_key=True, autoincrement=True)
     region: Mapped[str] = mapped_column(String(96))
-    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    ts: Mapped[datetime] = mapped_column(UTCDateTime())
     intensity_gco2_kwh: Mapped[float] = mapped_column(Float())
     is_forecast: Mapped[bool] = mapped_column(Boolean())
     horizon_minutes: Mapped[int] = mapped_column(Integer())
@@ -129,8 +128,8 @@ class CollectorRun(Base):
 
     run_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     source_id: Mapped[str] = mapped_column(ForeignKey("demand_sources.source_id"), index=True)
-    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    started_at: Mapped[datetime] = mapped_column(UTCDateTime())
+    ended_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     status: Mapped[str] = mapped_column(String(32))
     rows: Mapped[int] = mapped_column(Integer(), default=0)
     error: Mapped[str | None] = mapped_column(Text())
@@ -142,6 +141,6 @@ class CoverageOutage(Base):
 
     outage_id: Mapped[int] = mapped_column(Integer(), primary_key=True, autoincrement=True)
     source_id: Mapped[str] = mapped_column(ForeignKey("demand_sources.source_id"))
-    start_ts: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    end_ts: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    start_ts: Mapped[datetime] = mapped_column(UTCDateTime())
+    end_ts: Mapped[datetime] = mapped_column(UTCDateTime())
     cause: Mapped[str] = mapped_column(Text())

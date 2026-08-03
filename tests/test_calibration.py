@@ -37,9 +37,71 @@ def test_split_conformal_corrects_each_quantile_from_past_residuals() -> None:
     actual = predicted[:, 0] + 2
     calibrator = SplitConformalCalibrator.fit(actual, predicted, levels)
     calibrated = calibrator.calibrate(_forecast(levels, [[10, 11]]))
-    assert calibrator.corrections == (2.0, 1.0)
+    assert calibrator.corrections == ((2.0, 1.0),)
     assert calibrated.quantile_values.tolist() == [[12.0, 12.0]]
     assert calibrated.calibrator_id.startswith("split_conformal")
+
+
+def test_per_horizon_conformal_tracks_error_that_grows_with_lead_time() -> None:
+    """Pooling one correction across the horizon is wrong in both directions.
+
+    Forecast error grows with lead time, so a single pooled correction over-covers the
+    near steps (wasted capacity) and under-covers the far ones (SLO breach) — and the far
+    step is precisely the one capacity control acts on, because the decision has to be
+    made a whole ``startup_seconds`` ahead.
+    """
+    levels = (0.9,)
+    origins, horizon = 400, 10
+    rng = np.random.default_rng(20260803)
+    # residual scale grows linearly with lead time
+    scales = np.arange(1, horizon + 1, dtype=np.float64)
+    actual = rng.normal(0.0, 1.0, size=(origins, horizon)) * scales
+    actual = np.abs(actual)
+    predicted = np.zeros((origins, horizon, 1), dtype=np.float64)
+
+    per_horizon = SplitConformalCalibrator.fit_by_horizon(actual, predicted, levels)
+    pooled = SplitConformalCalibrator.fit(actual.reshape(-1), predicted.reshape(-1, 1), levels)
+
+    near = per_horizon.corrections[0][0]
+    far = per_horizon.corrections[-1][0]
+    pooled_correction = pooled.corrections[0][0]
+    assert near < pooled_correction < far
+
+    forecast = _forecast(levels, [[0.0]] * horizon)
+    pooled_values = pooled.calibrate(forecast).quantile_values[:, 0]
+    exact_values = per_horizon.calibrate(forecast).quantile_values[:, 0]
+
+    # realised one-sided coverage per step: pooled misses badly at the far horizon
+    pooled_far = float(np.mean(actual[:, -1] <= pooled_values[-1]))
+    exact_far = float(np.mean(actual[:, -1] <= exact_values[-1]))
+    assert pooled_far < 0.75, "pooled correction should visibly under-cover the far step"
+    assert exact_far >= 0.88, "per-horizon correction should hold ~90% at the far step"
+
+    pooled_near = float(np.mean(actual[:, 0] <= pooled_values[0]))
+    assert pooled_near > 0.99, "pooled correction should visibly over-cover the near step"
+
+
+def test_per_horizon_calibrator_rejects_a_mismatched_horizon() -> None:
+    levels = (0.9,)
+    actual = np.tile(np.asarray([1.0, 2.0]), (5, 1))
+    predicted = np.zeros((5, 2, 1), dtype=np.float64)
+    calibrator = SplitConformalCalibrator.fit_by_horizon(actual, predicted, levels)
+    with pytest.raises(ValueError, match="fitted for 2 horizon steps"):
+        calibrator.calibrate(_forecast(levels, [[0.0], [0.0], [0.0]]))
+
+
+def test_aci_reports_when_its_score_window_cannot_express_the_level() -> None:
+    """A short window silently caps how conservative ACI can get; that must be visible."""
+    scores = np.arange(1.0, 11.0)  # n=10 -> no level above 10/11 is representable
+    calibrator = AdaptiveConformalCalibrator(
+        scores, target_coverage=0.95, gamma=0.01, alpha_min=0.001, score_window=10
+    )
+    calibrator.alpha = 0.001  # the most conservative state the bounds allow
+    point = calibrator.observe(
+        timestamp=datetime(2026, 1, 1, tzinfo=UTC), raw_prediction=0.0, actual=0.0
+    )
+    assert point.saturated
+    assert point.correction == 10.0  # fell back to the window maximum
 
 
 def test_cqr_widens_symmetric_interval_without_crossing() -> None:
