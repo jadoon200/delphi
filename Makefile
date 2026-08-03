@@ -1,4 +1,4 @@
-.PHONY: env install lint typecheck test check up down migrate fetch-azure ingest-azure evaluate evaluate-calibration
+.PHONY: env install lint typecheck test check up down migrate fetch-azure ingest-azure evaluate evaluate-calibration validate-simulator
 
 env:
 	conda create -y -n delphi python=3.12
@@ -40,3 +40,6 @@ evaluate:
 
 evaluate-calibration:
 	python scripts/evaluate_calibration.py
+
+validate-simulator:
+	python scripts/validate_simulator.py
