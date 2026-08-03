@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import Literal
 
 import numpy as np
 import numpy.typing as npt
@@ -162,4 +163,46 @@ def concatenate_series(parts: list[DemandSeries]) -> DemandSeries:
         is_imputed=np.concatenate([part.is_imputed for part in parts]),
         quality=np.concatenate([part.quality for part in parts]),
         annotations=tuple(annotations),
+    )
+
+
+def aggregate_series(
+    series: DemandSeries,
+    factor: int,
+    *,
+    reducer: Literal["mean", "sum", "max"] = "mean",
+) -> DemandSeries:
+    """Aggregate fixed-size bins while retaining quality and annotation provenance."""
+    if factor <= 1 or len(series) % factor:
+        raise ValueError("aggregation factor must exceed one and divide the series length")
+    matrix = series.values.reshape(-1, factor)
+    if reducer == "mean":
+        values = np.mean(matrix, axis=1)
+    elif reducer == "sum":
+        values = np.sum(matrix, axis=1)
+    else:
+        values = np.max(matrix, axis=1)
+    imputed = np.any(series.is_imputed.reshape(-1, factor), axis=1)
+    quality = np.mean(series.quality.reshape(-1, factor), axis=1)
+    annotations = tuple(
+        SeriesAnnotation(
+            annotation.label,
+            annotation.start // factor,
+            min(len(values), (annotation.end + factor - 1) // factor),
+        )
+        for annotation in series.annotations
+    )
+    return DemandSeries(
+        workload_id=series.workload_id,
+        source_id=series.source_id,
+        resource_kind=series.resource_kind,
+        unit=series.unit,
+        step_seconds=series.step_seconds * factor,
+        timestamps=tuple(
+            series.timestamps[index + factor - 1] for index in range(0, len(series), factor)
+        ),
+        values=values,
+        is_imputed=imputed,
+        quality=quality,
+        annotations=annotations,
     )

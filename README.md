@@ -8,11 +8,12 @@ demand determines the demand quantile to provision. Forecasts therefore expose c
 quantiles—not a single point—and every later capacity decision records the evidence and
 assumptions that produced it.
 
-The tested M0 system spine and M1 demand layer are complete. A validated, immutable
+The tested M0 system spine, M1 demand layer, and M2 forecast baselines are complete. A validated, immutable
 `DemandSeries` unifies deterministic labelled regimes and the real Azure Functions 2019 wide
 trace, with explicit missing-point quality, reproducible cohort selection, checksum-verified
-fetching, and idempotent persistence. Forecasting, calibration, replay control, and specialist
-arbitration land as separately tested milestones; public status is tracked in
+fetching, and idempotent persistence. Forecasts are quantile-only and evaluated with chronological
+rolling origins, MASE, WQL, empirical coverage, and a deliberate leakage test. Calibration,
+replay control, and specialist arbitration land as separately tested milestones; status is in
 [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Principles
