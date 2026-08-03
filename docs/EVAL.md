@@ -254,3 +254,125 @@ does not need prediction, and reporting otherwise would be dishonest.**
 - **A calibrated upper tail**, which would settle Q4's high-ratio negative.
 - **Queue-fidelity results.** Everything above uses the utilisation model. The event-driven
   queue is built and validated but has not yet been used for a controller comparison.
+
+---
+
+# GPU / LLM-inference lane (M14–M16)
+
+Data: **Azure LLM inference traces 2024** — `code` (16.8M requests, 7 days from 2024-05-10)
+and `conv` (27.3M requests, 7 days from 2024-05-12). **CC-BY 4.0**; cite Stojkovic et al.,
+*DynamoLLM*, HPCA 2025. SHA-256 of both archives recorded in `docs/DATA.md`. Timestamps are
+absolute UTC, so unlike the Azure Functions trace there is no calendar anchor to assume.
+
+**Serving rates are modelled parameters, not measurements.** These traces publish tokens,
+not hardware timings. A replica is modelled at 12,000 prefill tok/s, 2,500 decode tok/s,
+240 s cold start, 85% utilisation ceiling. Every conclusion below is read from *rankings*
+and from the cold-start sweep, never from absolute GPU-hour figures.
+
+The capacity currency is **GPU-seconds of work per bin** — `prefill_tokens/prefill_rate +
+decode_tokens/decode_rate`, the two phases contending for one device. A replica supplies
+exactly `bin_seconds` of them, which lets the already-validated replay simulator score this
+lane unchanged rather than introducing a second, unvalidated simulator.
+
+## What the traces actually demand
+
+| | `code` | `conv` |
+|---|---:|---:|
+| requests/min, mean → p95 | 1,667 → 4,625 (**2.8×**) | 2,709 → 4,024 (1.5×) |
+| GPU-work/min, mean → p95 | 364 → 1,044 GPU-s (**2.9×**) | 483 → 699 GPU-s (1.4×) |
+| phase split | **prefill 95.8% / decode 4.2%** | prefill 76.3% / decode 23.7% |
+| context tokens/request, CV | 0.125 | 0.063 |
+| generated tokens/request, CV | 0.177 | 0.081 |
+
+`code` has **fewer** requests than `conv` but similar prefill load and 7.5× less decode
+load — the raw prefill:decode token ratio is 110.7:1 versus 15.5:1. Two workloads on the
+same hardware with completely different capacity shapes.
+
+## M16 — is request-rate autoscaling structurally wrong here?
+
+**Yes, and it is measurable.** Every proxy below is first rescaled to the true demand's
+mean, so what remains is error in *shape*: a proxy that merely needed a different constant
+would be a tuning problem, not a structural one.
+
+| tracked signal | trace | correlation | mean abs rel. err | p95 abs rel. err | worst under-provision |
+|---|---|---:|---:|---:|---:|
+| `requests` | code | 0.9961 | 9.4% | 26.9% | **−39.2%** |
+| `requests` | conv | 0.9749 | 5.4% | 11.0% | −15.1% |
+| `prefill` | code | 1.0000 | 0.7% | 2.1% | −9.6% |
+| `decode` | code | 0.9858 | 16.6% | 48.8% | **−57.3%** |
+| `total_tokens` | code | 1.0000 | 0.6% | 1.7% | −7.5% |
+
+**Correlation is a trap here.** Request count correlates with true GPU work at 0.9961 on
+the `code` trace and still under-provisions by up to 39% in individual bins. A dashboard
+showing r ≈ 0.996 would look like a solved problem; the SLO breaches happen in the tail.
+
+Tracking the right signal, at essentially identical cost:
+
+| controller | trace | violations on request count | violations on GPU work | GPU-hours |
+|---|---|---:|---:|---:|
+| reactive HPA | `code` | 0.1885 | **0.1521** (−19%) | 982 vs 997 |
+| reactive HPA | `conv` | 0.1819 | **0.1299** (−29%) | 985 vs 980 |
+
+**Caveat, stated rather than buried:** the effect is clear for the reactive controller but
+*reverses slightly* for the proactive family on `code` (0.1260 on request count vs 0.1323
+on GPU work). On a bursty trace the forecast error dominates the signal error, so this is
+not a universal win and should not be reported as one.
+
+## Q1 revisited — cold start is the mechanism
+
+The synthetic result for Q1 was non-monotone and saturated. On real inference demand it
+separates cleanly, and the two traces disagree in an informative way.
+
+**`conv` — monotone confirmation, the cleanest evidence in the project:**
+
+| startup | reactive viol. | proactive viol. | margin | relative reduction |
+|---:|---:|---:|---:|---:|
+| 0 s | 0.0922 | 0.0000 | +0.0922 | 100.0% |
+| 60 s | 0.1017 | 0.0000 | +0.1017 | 100.0% |
+| 240 s | 0.1299 | 0.0000 | +0.1299 | 100.0% |
+| 600 s | 0.2033 | 0.0363 | +0.1670 | 82.2% |
+| 1200 s | 0.3003 | 0.0694 | **+0.2309** | 76.9% |
+
+The absolute margin grows **monotonically** with cold-start time, exactly as registered.
+This is the venue Q10 said the claim needed: minutes-long cold starts on demand with
+exploitable daily structure.
+
+**`code` — forecasting does not help, at any lead time:**
+
+| startup | reactive viol. | proactive viol. | margin |
+|---:|---:|---:|---:|
+| 0 s | 0.0887 | 0.1193 | −0.0306 |
+| 60 s | 0.1073 | 0.1266 | −0.0193 |
+| 240 s | 0.1521 | 0.1323 | +0.0198 |
+| 600 s | 0.2870 | 0.3498 | −0.0628 |
+| 1200 s | 0.4122 | 0.4335 | −0.0214 |
+
+**A negative, and an informative one.** `code` is nearly twice as bursty as `conv`
+(peak-to-mean 2.9× versus 1.4×), and its spikes are not recoverable from yesterday's
+same-time value. Day-seasonal forecasting has nothing to exploit, so no amount of lead time
+rescues it. **Burstiness defeats forecast-driven capacity control regardless of actuation
+delay** — which is precisely the open challenge the workload-forecasting survey names, and
+it is visible here rather than argued.
+
+Taken together: forecasting pays when demand has exploitable structure, and *how much* it
+pays scales with actuation delay. Both conditions are needed. Neither alone is enough.
+
+## Methodology bug found and fixed
+
+The first run of this lane showed proactive control losing to reactive at **every** lead
+time on both traces. The cause was our own configuration, not the method: `refit_stride`
+was set to one full season, so the controller was acting on **day-old forecasts**. Refitting
+every 4 hours instead moved `code` from 0.2391 to 0.1323 violations.
+
+**Refit cadence is a first-class tuning parameter and was being silently mis-set.** It is
+now a named constant with the measurement recorded beside it. The general lesson: a
+"forecasting doesn't help" result should always be checked against forecast *freshness*
+before it is believed.
+
+## Added to the negatives ledger
+
+- **Forecasting does not help on the bursty `code` trace at any cold-start time.**
+- **The right-signal advantage reverses for proactive controllers on `code`** — forecast
+  error can dominate signal error.
+- **Correlation of 0.9961 coexists with 39% under-provisioning** in the tail. Correlation is
+  the wrong diagnostic for a capacity signal.
