@@ -481,3 +481,44 @@ So the project's claim narrows and sharpens: DELPHI is not "forecasting for capa
 is **a decision layer that tells you which quantile to buy, on top of whatever predictor
 your data actually rewards** — which on these traces is the boring one already shipping in
 Kubernetes.
+
+## Correction: the claim was scoped too broadly (2026-08-04)
+
+The section above concluded that forecasting does not help. That is true **only at
+autoscaling lead times**, and stating it without that qualifier was an overclaim. Measured
+across lead times on 1-minute bins:
+
+| trace | 5 min | 30 min | 2 h | 6 h | 12 h | 24 h |
+|---|---:|---:|---:|---:|---:|---:|
+| `code` trailing | **2.419** | **3.514** | 7.267 | 15.167 | 18.878 | 5.012 |
+| `code` day-ago | 4.756 | 4.756 | **4.756** | **4.756** | **4.756** | **4.756** |
+| `conv` trailing | **1.304** | **1.702** | 2.895 | 3.247 | 4.395 | 2.758 |
+| `conv` day-ago | 2.734 | 2.734 | **2.734** | **2.734** | **2.734** | **2.734** |
+
+At a 24-hour planning horizon on hourly bins, seasonality wins outright:
+
+| trace | trailing-24 h | day-ago | winner |
+|---|---:|---:|---|
+| `code` | 8.909 | **2.877** | day-ago, ~3× better |
+| `conv` | 3.090 | **1.698** | day-ago, ~2× better |
+
+**The crossover is at roughly 1–2 hours of lead time**, which is where minute-scale
+persistence (autocorrelation 0.989) has decayed far enough that daily structure
+(0.730 / 0.349) becomes the better signal.
+
+Every GPU controller experiment used a lead of 4–20 minutes — **entirely inside the
+trailing-window regime**. So the correct statement is:
+
+> At autoscaling horizons (minutes), explicit forecasting adds nothing a trailing
+> percentile does not already capture. At capacity-planning horizons (hours to a day),
+> a trailing window is structurally useless and seasonal forecasting is 2–3× better.
+
+Two caveats on the table above. The dip in trailing MASE at 24 h is not an anomaly: the
+lagged window there ends 24 hours back, so it converges to same-time-yesterday by
+construction. And **weekly seasonality could not be tested at all** — the traces are 7 days
+long, so there is never a full week of history to look back on.
+
+**Consequence for the project:** the newsvendor decision layer is horizon-independent and
+still stands. But the forecasting layer has an untested regime where it should win, and the
+GPU lane was built at the one lead time where it could not. Testing capacity planning —
+hourly bins, day-ahead commitment, reserved-capacity pricing — is the outstanding work.
