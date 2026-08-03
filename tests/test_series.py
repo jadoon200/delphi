@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta, timezone
 import numpy as np
 import pytest
 
-from delphi.data.series import DemandSeries, SeriesAnnotation, concatenate_series
+from delphi.data.series import DemandSeries, SeriesAnnotation, aggregate_series, concatenate_series
 
 
 def _series(start: datetime, values: list[float]) -> DemandSeries:
@@ -58,3 +58,12 @@ def test_slice_clips_annotations_and_concatenate_restores_coordinates() -> None:
         SeriesAnnotation("event", 1, 2),
         SeriesAnnotation("event", 2, 4),
     )
+
+
+def test_aggregation_preserves_cadence_quality_and_annotations() -> None:
+    whole = _series(datetime(2026, 1, 1, tzinfo=UTC), [1, 2, 3, 4])
+    hourly = aggregate_series(whole, 2)
+    assert hourly.step_seconds == 120
+    assert hourly.values.tolist() == [1.5, 3.5]
+    assert hourly.timestamps[0] == whole.timestamps[1]
+    assert hourly.annotations == (SeriesAnnotation("event", 0, 2),)

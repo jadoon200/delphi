@@ -6,7 +6,7 @@ Milestones are marked complete only after their tests and documentation are gree
 |---|---|---|
 | M0 — system spine | ✅ | Config, UTC utilities, canonical DB schema, Alembic parity, zero-cost test, CI |
 | M1 — demand data | ✅ | Validated `DemandSeries`, deterministic labelled synthetic regimes, and checksum-verified Azure Functions 2019 cohort ingest |
-| M2 — forecast baselines | ⬜ | Rolling-origin seasonal-naive, percentile, classical and quantile baselines |
+| M2 — forecast baselines | ✅ | Leak-guarded rolling-origin seasonal-naive, percentile, ARIMA/ETS, and LightGBM quantile baselines with MASE/WQL tables |
 | M3 — calibration | ⬜ | Split conformal, CQR and adaptive conformal inference with measured coverage |
 | M4–M8 — capacity control | ⬜ | Validated replay simulator, baseline controllers, newsvendor sizing, honest evaluation |
 | M9–M13 — specialists | ⬜ | Typed proposals, deterministic supervisor, verifier and ablation |
