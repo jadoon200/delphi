@@ -247,13 +247,25 @@ class AdaptiveConformalCalibrator:
         *,
         target_coverage: float = 0.95,
         gamma: float = 0.01,
-        alpha_min: float = 0.001,
-        alpha_max: float = 0.5,
+        alpha_min: float | None = None,
+        alpha_max: float | None = None,
         score_window: int = 1440,
     ) -> None:
-        if not 0.5 < target_coverage < 1:
-            raise ValueError("ACI target coverage must be within (0.5, 1)")
-        if gamma <= 0 or not 0 < alpha_min < 1 - target_coverage < alpha_max < 1:
+        """Bounds default *relative to the target* rather than to fixed constants.
+
+        A newsvendor ``q*`` is a price ratio, so it can legitimately sit at or below 0.5
+        when idle capacity costs more than a breach — opportunistic and spot-tier work is
+        exactly that case. Hard-coding a floor of 0.5 would have made those targets
+        unrepresentable for no mathematical reason.
+        """
+        if not 0 < target_coverage < 1:
+            raise ValueError("ACI target coverage must be strictly within (0, 1)")
+        target_alpha = 1 - target_coverage
+        if alpha_min is None:
+            alpha_min = max(1e-4, target_alpha * 0.1)
+        if alpha_max is None:
+            alpha_max = min(1 - 1e-4, target_alpha + (1 - target_alpha) * 0.5)
+        if gamma <= 0 or not 0 < alpha_min < target_alpha < alpha_max < 1:
             raise ValueError("ACI gamma and alpha bounds are invalid")
         if score_window <= 1:
             raise ValueError("ACI score window must exceed one")
@@ -272,6 +284,20 @@ class AdaptiveConformalCalibrator:
     @property
     def calibrator_id(self) -> str:
         return f"aci:coverage={self.target_coverage:g}:gamma={self.gamma:g}:v1"
+
+    def current_correction(self) -> float:
+        """The additive correction the calibrator would apply right now.
+
+        A controller has to size capacity *before* the outcome exists, so it needs to read
+        the correction without consuming an observation. ``observe`` remains the only way
+        to advance the calibrator's state.
+        """
+        return finite_sample_quantile(np.asarray(self._scores, dtype=np.float64), 1 - self.alpha)
+
+    def is_saturated(self) -> bool:
+        """Whether the score window can still express the current confidence level."""
+        _, saturated = conformal_rank(len(self._scores), 1 - self.alpha)
+        return saturated
 
     def observe(
         self,
