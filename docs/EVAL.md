@@ -522,3 +522,81 @@ long, so there is never a full week of history to look back on.
 still stands. But the forecasting layer has an untested regime where it should win, and the
 GPU lane was built at the one lead time where it could not. Testing capacity planning —
 hourly bins, day-ahead commitment, reserved-capacity pricing — is the outstanding work.
+
+---
+
+# Week-ahead: the horizon the earlier traces could not reach (2026-08-04)
+
+The Azure traces are 7 days long, so week-ahead forecasting was not merely untested — it was
+**untestable**: no held-out week exists and weekly seasonality cannot be learned from one
+instance of it. That gap is now closed with a longer trace.
+
+**Data: Bitbrains GWA-T-12 `rnd`** — 500 enterprise VMs (banks, insurers, credit-card
+operators), **three consecutive months, 2013-06-30 to 2013-09-29, 91 days = 13.0 weeks**,
+5-minute resolution, 284 MB. Aggregated to one fleet-level CPU demand signal, because the
+capacity-planning question is "how much does the estate need", not "what will VM 417 do".
+
+Provenance caveat carried in the source record: the canonical Grid Workloads Archive host has
+been unreachable since 2026-08-02, so this comes from the @Large mirror and **the terms-of-use
+page could not be read**. SHA-256 recorded; data never redistributed.
+
+Estate size varies (median 501 VMs, range 0–549). Bins where the VM count collapses are
+flagged `is_imputed` with zero quality — **an estate that shrank is not an estate that
+idled** — leaving 25,216 of 26,208 bins usable.
+
+## The workload has almost no exploitable long-range structure
+
+| lag | 5 min | 1 h | 6 h | 1 day | 3 days | 1 week | 2 weeks |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| autocorrelation | 0.985 | 0.868 | 0.546 | **0.248** | 0.204 | **0.271** | 0.169 |
+
+Week-lag autocorrelation (0.271) is barely above day-lag (0.248), and both are weak.
+
+## Week-ahead: nothing beats a flat average
+
+Mean absolute error as a percentage of mean demand, one week ahead:
+
+| predictor | error |
+|---|---:|
+| week-ago | 59.8% |
+| trailing window | 58.5% |
+| day-ago | 56.1% |
+| **flat mean of the prior 4 weeks** | **53.1%** |
+
+**The structureless predictor wins.** Rolling-origin over 8 held-out weeks confirms it:
+week-ago wins 2, trailing 3, day-ago 3 — a coin flip, with MASE swinging from 6.4 to 18.6
+between weeks.
+
+## The generalisable finding
+
+Contrast the two workloads measured in this project:
+
+| workload | autocorrelation @ 1 day |
+|---|---:|
+| Azure LLM `code` (GPU work) | **0.737** |
+| Azure LLM `conv` (GPU work) | 0.363 |
+| Bitbrains `rnd` (fleet CPU) | **0.248** |
+
+**Predictability is a property of the workload, not of the method.** The Azure inference
+traces have a strong daily rhythm — developer and business hours are visible in the signal.
+An aggregate of 500 heterogeneous enterprise VMs does not: individual rhythms wash out in
+the sum, and what remains is close to a level plus noise.
+
+So the complete answer across all three horizons tested:
+
+| horizon | what wins | why |
+|---|---|---|
+| minutes | trailing percentile | persistence r ≈ 0.98; a heuristic already extracts it |
+| hours to a day | seasonal, **where daily structure exists** | persistence has decayed; Azure LLM has r = 0.74 at a day |
+| **one week** | **a flat average** | no predictor beat 53.1% error on the one fleet long enough to test |
+
+**Consequence for the project.** The right first question is not "which forecaster" but
+**"is this workload predictable at my lead time at all"** — and that is answerable in
+seconds from an autocorrelation profile, before any model is built. That diagnostic is worth
+more to an operator than another controller, and DELPHI should ship it.
+
+Two limits on this section, stated rather than buried. It is **one fleet**, and a
+13-week aggregate of business-critical VMs is not representative of all clusters. And MASE
+here is measured against a 5-minute-ahead naive benchmark, which is a demanding denominator
+for a week-ahead question — the honest comparison is *between* the predictors, where they
+are within a few percent of each other and of a flat line.
