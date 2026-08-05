@@ -1,0 +1,10 @@
+# Runtime-only dependencies for the deploy image.
+# The heavy scientific stack (lightgbm, statsforecast, scikit-learn) is deliberately
+# absent: the served snapshot is precomputed offline, so the container cannot start
+# training inside a web request and stays small enough for a free tier.
+fastapi>=0.115
+numpy>=1.26
+pydantic>=2.7
+pydantic-settings>=2.3
+structlog>=24.1
+uvicorn[standard]>=0.32

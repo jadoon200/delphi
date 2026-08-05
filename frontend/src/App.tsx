@@ -81,7 +81,7 @@ export default function App() {
         </section>
       )}
 
-      {!error && tab === 'diagnostic' && <Diagnostic workloads={workloads} />}
+      {!error && tab === 'diagnostic' && <Diagnostic workloads={workloads} isDemo={health?.snapshot_mode !== 'replay'} />}
       {!error && tab === 'workloads' && workloads.length > 0 && (
         <Workloads workloads={workloads} />
       )}

@@ -1,0 +1,52 @@
+# Single-container deploy: the API serves the built dashboard same-origin.
+#
+# One container rather than two services means no CORS surface, no second process to keep
+# warm on a free tier, and one thing to keep alive. The snapshot is rebuilt from current
+# code at image build, so a deploy can never ship an artifact that has drifted from the
+# repo — the failure that once had a sibling project showing a "live" badge over a stale
+# synthetic seed.
+
+# --- stage 1: build the dashboard ------------------------------------------------
+FROM node:22-slim AS dashboard
+
+WORKDIR /build
+COPY frontend/package.json frontend/package-lock.json* ./
+RUN npm ci --no-audit --no-fund
+COPY frontend/ ./
+RUN npm run build
+
+# --- stage 2: runtime ------------------------------------------------------------
+FROM python:3.12-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+
+# Runtime dependencies only. The heavy scientific stack (lightgbm, statsforecast,
+# scikit-learn) is used to *produce* results offline and is deliberately absent here:
+# the served snapshot is precomputed, so the runtime image stays small enough for a
+# free tier and cannot accidentally start training anything inside a web request.
+COPY requirements-serve.txt ./
+RUN pip install --no-cache-dir -r requirements-serve.txt
+
+COPY src/ ./src/
+COPY scripts/ ./scripts/
+COPY --from=dashboard /build/dist ./frontend/dist
+
+# Bake a demo snapshot from current code. The full snapshot needs the raw traces, which
+# are gitignored and far too large to ship; this generates a synthetic stand-in with the
+# same shape so the deployed site is honest about being a demo rather than empty.
+RUN PYTHONPATH=src python scripts/build_demo_snapshot.py
+
+ENV PYTHONPATH=/app/src \
+    DELPHI_SNAPSHOT_PATH=/app/data/snapshot.json \
+    DELPHI_DASHBOARD_DIST=/app/frontend/dist \
+    DELPHI_SNAPSHOT_MODE=demo \
+    PORT=8000
+
+EXPOSE 8000
+
+# Render injects $PORT; default to 8000 for local runs of the exact deploy image.
+CMD ["sh", "-c", "uvicorn delphi.api.app:app --host 0.0.0.0 --port ${PORT:-8000}"]

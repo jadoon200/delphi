@@ -111,7 +111,13 @@ function AutocorrBar({ label, value }: { label: string; value: number | null }) 
   );
 }
 
-export default function Diagnostic({ workloads }: { workloads: WorkloadSummary[] }) {
+export default function Diagnostic({
+  workloads,
+  isDemo,
+}: {
+  workloads: WorkloadSummary[];
+  isDemo: boolean;
+}) {
   const [sample, setSample] = useState<keyof typeof SAMPLES>('daily');
   const [underage, setUnderage] = useState(19);
   const [overage, setOverage] = useState(1);
@@ -147,10 +153,10 @@ export default function Diagnostic({ workloads }: { workloads: WorkloadSummary[]
       <section className="panel">
         <h2>Before you build a predictive autoscaler, find out if prediction can help</h2>
         <p className="sub">
-          Across seven workloads from three providers, a single measured number — the
-          autocorrelation of demand at a one-day lag — predicted whether forecasting would beat
-          the trailing-percentile recommender that Kubernetes already ships. It costs seconds to
-          compute. Building the forecaster costs weeks.
+          Across <strong>seven real workloads from three providers</strong>, a single measured
+          number — the autocorrelation of demand at a one-day lag — predicted whether forecasting
+          would beat the trailing-percentile recommender that Kubernetes already ships. It costs
+          seconds to compute. Building the forecaster costs weeks.
         </p>
 
         <div className="grid two">
@@ -256,10 +262,25 @@ export default function Diagnostic({ workloads }: { workloads: WorkloadSummary[]
       </section>
 
       <section className="panel">
-        <h2>The seven workloads this was measured on</h2>
+        <h2>
+          {isDemo
+            ? `Loaded in this demo: ${workloads.length} synthetic workloads`
+            : `The ${workloads.length} workloads this was measured on`}
+        </h2>
         <p className="sub">
-          Sorted by daily autocorrelation. Every trace is free and publicly available; two carry a
-          licence caveat that is stated rather than hidden.
+          Sorted by daily autocorrelation.{' '}
+          {isDemo ? (
+            <>
+              <strong>These are synthetic stand-ins</strong>, calibrated so their daily
+              autocorrelation matches the real traces — the raw traces are 2.5 GB and are not
+              shipped in the container. The conclusions under Findings are the real measured ones.
+            </>
+          ) : (
+            <>
+              Every trace is free and publicly available; two carry a licence caveat that is
+              stated rather than hidden.
+            </>
+          )}
         </p>
         <div className="scroll-x">
           <table>

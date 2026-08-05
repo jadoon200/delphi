@@ -1,0 +1,259 @@
+{
+  "generated_at": "2026-08-05T21:19:40.615024Z",
+  "snapshot_mode": "demo",
+  "delphi_version": "0.1.0",
+  "assumptions": [
+    "DEMO DATA: these workloads are synthetic stand-ins whose autocorrelation structure imitates the real traces. The raw traces are 2.5 GB and are not shipped in the container. The *findings* below are the real measured ones.",
+    "Open-loop assumption: replaying a trace against a different policy is a counterfactual, valid only because every arrival process here is externally driven and cannot respond to provisioning. Rankings transfer; absolute costs carry a sim-to-real disclaimer.",
+    "Simulated numbers are a ceiling by construction. Every simplification in the simulator — the utilisation model, modelled service times, modelled cold starts — flatters the proactive methods.",
+    "DELPHI recommends capacity; it never applies a change to anything real.",
+    "Retail list prices are not what an enterprise pays. The shape of a frontier is the result, not the absolute dollars."
+  ],
+  "workloads": [
+    {
+      "workload_id": "synthetic-strong-daily",
+      "label": "Synthetic — strong daily rhythm",
+      "source_id": "synthetic-demo",
+      "licence": "Synthetic — generated locally, no external data.",
+      "resource_kind": "cpu",
+      "unit": "units",
+      "step_seconds": 60,
+      "bins": 10080,
+      "days": 7.0,
+      "daily_autocorrelation": 0.7300000000002469,
+      "minute_autocorrelation": 0.8362461411818907,
+      "weekly_autocorrelation": null,
+      "peak_to_mean": 1.2809580577635815,
+      "mean_demand": 100.28133703476185,
+      "forecastable": true,
+      "verdict": "Strong daily structure. Forecasting is expected to pay at commitment windows of roughly six hours or longer, where reaction is impossible."
+    },
+    {
+      "workload_id": "synthetic-moderate-daily",
+      "label": "Synthetic — moderate daily rhythm",
+      "source_id": "synthetic-demo",
+      "licence": "Synthetic — generated locally, no external data.",
+      "resource_kind": "cpu",
+      "unit": "units",
+      "step_seconds": 300,
+      "bins": 8352,
+      "days": 29.0,
+      "daily_autocorrelation": 0.47000000000005393,
+      "minute_autocorrelation": 0.8774653447724056,
+      "weekly_autocorrelation": 0.532082242548002,
+      "peak_to_mean": 1.2820903900970113,
+      "mean_demand": 100.32333839693624,
+      "forecastable": false,
+      "verdict": "Weak daily structure. No forecaster tested beat a trailing percentile at any commitment length on workloads in this range."
+    },
+    {
+      "workload_id": "synthetic-weak-daily",
+      "label": "Synthetic — weak daily rhythm",
+      "source_id": "synthetic-demo",
+      "licence": "Synthetic — generated locally, no external data.",
+      "resource_kind": "cpu",
+      "unit": "units",
+      "step_seconds": 60,
+      "bins": 10080,
+      "days": 7.0,
+      "daily_autocorrelation": 0.35000000000162906,
+      "minute_autocorrelation": 0.9034764904089755,
+      "weekly_autocorrelation": null,
+      "peak_to_mean": 1.2859780198604167,
+      "mean_demand": 100.10027264208493,
+      "forecastable": false,
+      "verdict": "Weak daily structure. No forecaster tested beat a trailing percentile at any commitment length on workloads in this range."
+    },
+    {
+      "workload_id": "synthetic-persistent",
+      "label": "Synthetic — persistent, no rhythm",
+      "source_id": "synthetic-demo",
+      "licence": "Synthetic — generated locally, no external data.",
+      "resource_kind": "cpu",
+      "unit": "units",
+      "step_seconds": 300,
+      "bins": 8640,
+      "days": 30.0,
+      "daily_autocorrelation": 0.220000000001399,
+      "minute_autocorrelation": 0.8376564267485247,
+      "weekly_autocorrelation": 0.3232564654529582,
+      "peak_to_mean": 1.318371412520088,
+      "mean_demand": 100.49880133114671,
+      "forecastable": false,
+      "verdict": "Effectively no daily structure. A trailing percentile — or at long horizons a flat average — is the right tool; an explicit forecast only adds its own error."
+    }
+  ],
+  "horizons": {
+    "synthetic-strong-daily": [
+      {
+        "horizon_label": "5 min",
+        "horizon_steps": 5,
+        "trailing_mase": 0.9354980437482874,
+        "seasonal_mase": 1.7759946655426428,
+        "winner": "trailing"
+      },
+      {
+        "horizon_label": "1 hour",
+        "horizon_steps": 60,
+        "trailing_mase": 1.524116455226377,
+        "seasonal_mase": 1.7759946655426428,
+        "winner": "trailing"
+      },
+      {
+        "horizon_label": "6 hours",
+        "horizon_steps": 360,
+        "trailing_mase": 4.668312638837201,
+        "seasonal_mase": 1.7759946655426428,
+        "winner": "seasonal"
+      },
+      {
+        "horizon_label": "1 day",
+        "horizon_steps": 1440,
+        "trailing_mase": 1.667690692567818,
+        "seasonal_mase": 1.7759946655426428,
+        "winner": "trailing"
+      }
+    ],
+    "synthetic-moderate-daily": [
+      {
+        "horizon_label": "5 min",
+        "horizon_steps": 1,
+        "trailing_mase": 1.0520193284866908,
+        "seasonal_mase": 2.6273789413082245,
+        "winner": "trailing"
+      },
+      {
+        "horizon_label": "1 hour",
+        "horizon_steps": 12,
+        "trailing_mase": 1.5885047683504763,
+        "seasonal_mase": 2.6273789413082245,
+        "winner": "trailing"
+      },
+      {
+        "horizon_label": "6 hours",
+        "horizon_steps": 72,
+        "trailing_mase": 3.6579690670446987,
+        "seasonal_mase": 2.6273789413082245,
+        "winner": "seasonal"
+      },
+      {
+        "horizon_label": "1 day",
+        "horizon_steps": 288,
+        "trailing_mase": 2.514171191473962,
+        "seasonal_mase": 2.6273789413082245,
+        "winner": "trailing"
+      }
+    ],
+    "synthetic-weak-daily": [
+      {
+        "horizon_label": "5 min",
+        "horizon_steps": 5,
+        "trailing_mase": 1.13620796640752,
+        "seasonal_mase": 3.063568380893032,
+        "winner": "trailing"
+      },
+      {
+        "horizon_label": "1 hour",
+        "horizon_steps": 60,
+        "trailing_mase": 1.65541919444703,
+        "seasonal_mase": 3.063568380893032,
+        "winner": "trailing"
+      },
+      {
+        "horizon_label": "6 hours",
+        "horizon_steps": 360,
+        "trailing_mase": 3.5275927000063807,
+        "seasonal_mase": 3.063568380893032,
+        "winner": "seasonal"
+      },
+      {
+        "horizon_label": "1 day",
+        "horizon_steps": 1440,
+        "trailing_mase": 2.9182640471016295,
+        "seasonal_mase": 3.063568380893032,
+        "winner": "trailing"
+      }
+    ],
+    "synthetic-persistent": [
+      {
+        "horizon_label": "5 min",
+        "horizon_steps": 1,
+        "trailing_mase": 1.2686875399373143,
+        "seasonal_mase": 3.441737522089275,
+        "winner": "trailing"
+      },
+      {
+        "horizon_label": "1 hour",
+        "horizon_steps": 12,
+        "trailing_mase": 1.9446873760747594,
+        "seasonal_mase": 3.441737522089275,
+        "winner": "trailing"
+      },
+      {
+        "horizon_label": "6 hours",
+        "horizon_steps": 72,
+        "trailing_mase": 3.80422522851861,
+        "seasonal_mase": 3.441737522089275,
+        "winner": "seasonal"
+      },
+      {
+        "horizon_label": "1 day",
+        "horizon_steps": 288,
+        "trailing_mase": 3.3634042819351326,
+        "seasonal_mase": 3.441737522089275,
+        "winner": "trailing"
+      }
+    ]
+  },
+  "frontiers": {},
+  "findings": [
+    {
+      "question_id": "Q1",
+      "question": "Does forecasting beat reaction at minute-scale autoscaling horizons?",
+      "prior": "Yes, and the margin should grow with actuation delay.",
+      "answer": "No. Against a properly tuned sliding-window percentile recommender — the incumbent that Kubernetes VPA and Borg Autopilot already ship — forecasting lost in 8 of 8 settings, and the gap widened with cold start.",
+      "verdict": "refuted",
+      "evidence": "Minute-scale autocorrelation is ~0.98, so a trailing percentile already extracts nearly all the signal; an explicit model adds its own error. Confirmed across four forecasters."
+    },
+    {
+      "question_id": "Q4",
+      "question": "Does a price-derived compliance target beat a conventional fixed one?",
+      "prior": "Only when prices are asymmetric enough to matter.",
+      "answer": "Yes in 19 of 24 settings. The newsvendor identity q* = C_u/(C_u+C_o) sets the percentile that convention normally fixes at p95.",
+      "verdict": "confirmed",
+      "evidence": "At C_u/C_o = 19 the derived target equals the p95 convention exactly and the two agree to the cent — a forced algebraic identity that serves as a consistency check on the harness."
+    },
+    {
+      "question_id": "Q10",
+      "question": "Is there a workload where no controller beats static provisioning?",
+      "prior": "Expected yes.",
+      "answer": "Yes. On a stable Azure Functions workload, static provisioning was the cheapest point on the entire frontier and neither calibrated controller reached a 1% violation rate at all.",
+      "verdict": "confirmed",
+      "evidence": "Demand p95/mean was near 1.2; there was nothing for a forecaster to add."
+    },
+    {
+      "question_id": "Q11",
+      "question": "Does forecasting ever pay, and if so where?",
+      "prior": "Unknown after Q1 refuted the autoscaling case.",
+      "answer": "Yes, in the commitment regime: sizing once and holding for 6-12 hours on a workload with strong daily structure. Forward forecasting dominated a trailing window — cheaper AND fewer violations — in 5 of 7 and 6 of 7 quantile settings, halving the violation rate at lower cost at 12 hours.",
+      "verdict": "confirmed",
+      "evidence": "Two conditions are both necessary: daily autocorrelation above ~0.5, and a commitment long enough that reaction is impossible. Either alone is not enough."
+    },
+    {
+      "question_id": "Q12",
+      "question": "Does week-ahead forecasting work?",
+      "prior": "Seasonality should dominate at long horizons.",
+      "answer": "No. On the only fleet long enough to test it (13 weeks), a flat average of the prior four weeks beat every structured predictor: 53.1% error versus 56-60%.",
+      "verdict": "refuted",
+      "evidence": "Weekly autocorrelation was 0.271 against a daily 0.248 — both weak. There was no long-range structure to exploit."
+    },
+    {
+      "question_id": "Q13",
+      "question": "Does daily autocorrelation predict whether forecasting will pay?",
+      "prior": "Proposed as a diagnostic after the mixed results above.",
+      "answer": "It predicted every outcome measured so far. High-autocorrelation workloads reward forecasting at long commitments; low-autocorrelation ones never did, at any commitment length.",
+      "verdict": "open",
+      "evidence": "Strong so far but the sample is small, and the threshold near 0.5 is drawn from a handful of workloads rather than fitted. Treat as a rule of thumb with a measurement behind it, not a calibrated boundary."
+    }
+  ]
+}
