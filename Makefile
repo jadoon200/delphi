@@ -1,4 +1,4 @@
-.PHONY: env install lint typecheck test check up down migrate fetch-azure ingest-azure evaluate evaluate-calibration validate-simulator evaluate-frontier evaluate-gpu
+.PHONY: env install lint typecheck test check up down migrate fetch-azure ingest-azure evaluate evaluate-calibration validate-simulator evaluate-frontier evaluate-gpu evaluate-commitment
 
 env:
 	conda create -y -n delphi python=3.12
@@ -46,6 +46,9 @@ evaluate-frontier:
 
 evaluate-gpu:
 	python scripts/evaluate_gpu_lane.py
+
+evaluate-commitment:
+	python scripts/evaluate_commitment.py
 
 validate-simulator:
 	python scripts/validate_simulator.py

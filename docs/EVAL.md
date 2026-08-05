@@ -600,3 +600,79 @@ Two limits on this section, stated rather than buried. It is **one fleet**, and 
 here is measured against a 5-minute-ahead naive benchmark, which is a demanding denominator
 for a week-ahead question — the honest comparison is *between* the predictors, where they
 are within a few percent of each other and of a flat line.
+
+---
+
+# The commitment regime: where forecasting finally wins (2026-08-05)
+
+Three earlier rounds found forecasting losing — at minute autoscaling horizons, and at a
+week-ahead horizon. Both were tested in regimes where a controller can *react*, or where no
+structure exists. This closes the remaining cell.
+
+**A commitment cannot react.** Reserved instances, cluster sizing and procurement fix a
+capacity level for hours, so the decision must cover the *entire* coming window including
+its peak. A backward window can only assume the next window resembles the last; a forecast
+can know a daily ramp falls inside it.
+
+Both controllers perform the **same arithmetic** — the `q`-quantile of a window of demand
+values — differing only in whether that window is observed or predicted. Keeping the
+operation identical is what makes the comparison about information rather than about two
+different sizing rules. A regression test asserts they agree exactly on a strictly periodic
+series, where yesterday's window *is* the coming one.
+
+Run through the validated simulator with prices, churn and a 240 s actuation delay.
+
+## Result: two conditions, both necessary
+
+Times forward dominated backward (cheaper **and** fewer violations) at the same quantile,
+out of 7 settings:
+
+| workload | daily autocorrelation | 1 h | 2 h | 6 h | 12 h |
+|---|---:|---:|---:|---:|---:|
+| Azure LLM `code` | **0.730** | 0/7 | 0/7 | **5/7** | **6/7** |
+| Azure LLM `conv` | 0.349 | 0/7 | 0/7 | 0/7 | 0/7 |
+| Bitbrains `rnd` fleet | 0.248 | 0/7 | 0/7 | 0/7 | 0/7 |
+
+**Forecasting pays only where daily structure is strong *and* the commitment is long enough
+that reaction is impossible.** Either condition alone is insufficient: `code` at 1–2 h has
+the structure but can still react; `conv` and Bitbrains have long windows but nothing to
+forecast.
+
+Magnitudes on `code`, paired at identical settings:
+
+| window | q | backward viol / cost | forward viol / cost | change |
+|---|---:|---|---|---|
+| 6 h | 0.95 | 0.3307 / $4,171 | 0.2849 / $3,684 | −14% violations, −12% cost |
+| 6 h | 0.99 | 0.2809 / $4,478 | 0.2380 / $4,010 | −15% violations, −10% cost |
+| 12 h | 0.90 | 0.4747 / $3,991 | 0.2564 / $3,786 | **−46% violations, −5% cost** |
+| 12 h | 0.95 | 0.4694 / $4,154 | 0.2377 / $3,949 | **−49% violations, −5% cost** |
+| 12 h | 0.99 | 0.4401 / $4,440 | 0.2161 / $4,235 | **−51% violations, −5% cost** |
+
+At a 12-hour commitment the forecast **halves the violation rate while costing less**. This
+is the first unambiguous, simulator-confirmed win for forecasting in the project.
+
+Note the one consistent exception: at `q = 0.50` forward loses on violations at both
+windows. Sizing a held commitment to a median is under-provisioning by construction, and a
+better prediction of the median does not rescue that.
+
+## Caveat: the absolute violation rates are high
+
+At 6–12 hour commitments both families violate 20–50% of bins on `code`, because a single
+held level cannot cover a signal with a ~2.9× peak-to-mean ratio without massive
+over-buying. **Read the paired comparison, not the levels.** A real deployment would pair a
+commitment with a small reactive tier for the peaks — which is exactly how reserved-plus-
+on-demand purchasing works, and is not modelled here.
+
+## The complete picture across every horizon tested
+
+| horizon | regime | winner | why |
+|---|---|---|---|
+| minutes | autoscaling | trailing percentile | persistence r ≈ 0.98; a heuristic already extracts it |
+| 1–2 h | commitment | trailing percentile | short enough that reaction still covers the error |
+| **6–12 h** | **commitment** | **forecasting, dominant** | must cover a window you cannot react within |
+| 1 week | commitment | flat average | no structure left to exploit |
+
+**And the gate on all of it is the workload, not the method.** Daily autocorrelation
+predicted every outcome here: 0.730 wins, 0.349 and 0.248 do not. That number costs seconds
+to compute and tells an operator whether to build any of this — which remains the most
+useful thing the project has produced.
