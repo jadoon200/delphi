@@ -1,4 +1,4 @@
-.PHONY: env install lint typecheck test check up down migrate fetch-azure ingest-azure evaluate evaluate-calibration validate-simulator evaluate-frontier evaluate-gpu evaluate-commitment
+.PHONY: env install lint typecheck test check up down migrate fetch-azure ingest-azure evaluate evaluate-calibration validate-simulator evaluate-frontier evaluate-gpu evaluate-commitment snapshot api
 
 env:
 	conda create -y -n delphi python=3.12
@@ -49,6 +49,12 @@ evaluate-gpu:
 
 evaluate-commitment:
 	python scripts/evaluate_commitment.py
+
+snapshot:
+	python scripts/build_snapshot.py
+
+api:
+	uvicorn delphi.api.app:app --reload --port 8040
 
 validate-simulator:
 	python scripts/validate_simulator.py
