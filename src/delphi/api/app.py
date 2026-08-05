@@ -18,6 +18,8 @@ from typing import Annotated
 import numpy as np
 from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from delphi.api.snapshot import (
@@ -264,3 +266,21 @@ def evidence(limit: Annotated[int, Query(ge=1, le=200)] = 50) -> dict[str, objec
 
 
 __all__ = ["DemandPoint", "app", "load_snapshot"]
+
+
+# --- single-container SPA serving -------------------------------------------------
+# The deploy is one container: the API serves the built dashboard same-origin, so there
+# is no CORS surface and no second service to keep alive on a free tier. Mounted last so
+# every API route above wins; unknown paths fall through to the SPA entry point.
+_DIST = Path(get_settings().dashboard_dist or "frontend/dist")
+
+if _DIST.is_dir():
+    app.mount("/assets", StaticFiles(directory=_DIST / "assets"), name="assets")
+
+    @app.get("/{path:path}", include_in_schema=False)
+    def spa(path: str) -> FileResponse:
+        """Serve the SPA shell for any unmatched path."""
+        candidate = _DIST / path
+        if path and candidate.is_file():
+            return FileResponse(candidate)
+        return FileResponse(_DIST / "index.html")

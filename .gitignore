@@ -18,3 +18,5 @@ results/
 *.db
 *.sqlite
 *.sqlite3
+frontend/node_modules/
+frontend/dist/
