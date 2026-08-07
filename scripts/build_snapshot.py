@@ -223,9 +223,12 @@ def findings() -> list[Finding]:
             ),
             verdict="open",
             evidence=(
-                "Strong so far but the sample is small, and the threshold near 0.5 is drawn "
-                "from a handful of workloads rather than fitted. Treat as a rule of thumb "
-                "with a measurement behind it, not a calibrated boundary."
+                "Across 7 workloads x 4 forecasters x 4 quantiles, the 0.50 cutoff gets 27 of "
+                "28 cells right at a 6-hour commitment. But there is a real exception in the "
+                "unflattering direction: materna-2 at r=0.450, below the threshold, won 2 of 4 "
+                "at 12 hours while materna-1 at r=0.494, above it, won none. Autocorrelation "
+                "orders these workloads well and predicts the extremes reliably; it is not a "
+                "calibrated boundary, and a value near 0.45-0.50 does not settle the question."
             ),
         ),
     ]

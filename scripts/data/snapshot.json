@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-05T21:19:40.615024Z",
+  "generated_at": "2026-08-07T03:00:35.483730Z",
   "snapshot_mode": "demo",
   "delphi_version": "0.1.0",
   "assumptions": [
@@ -253,7 +253,7 @@
       "prior": "Proposed as a diagnostic after the mixed results above.",
       "answer": "It predicted every outcome measured so far. High-autocorrelation workloads reward forecasting at long commitments; low-autocorrelation ones never did, at any commitment length.",
       "verdict": "open",
-      "evidence": "Strong so far but the sample is small, and the threshold near 0.5 is drawn from a handful of workloads rather than fitted. Treat as a rule of thumb with a measurement behind it, not a calibrated boundary."
+      "evidence": "Across 7 workloads x 4 forecasters x 4 quantiles, the 0.50 cutoff gets 27 of 28 cells right at a 6-hour commitment. But there is a real exception in the unflattering direction: materna-2 at r=0.450, below the threshold, won 2 of 4 at 12 hours while materna-1 at r=0.494, above it, won none. Autocorrelation orders these workloads well and predicts the extremes reliably; it is not a calibrated boundary, and a value near 0.45-0.50 does not settle the question."
     }
   ]
 }

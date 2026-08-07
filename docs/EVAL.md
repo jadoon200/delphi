@@ -676,3 +676,74 @@ on-demand purchasing works, and is not modelled here.
 predicted every outcome here: 0.730 wins, 0.349 and 0.248 do not. That number costs seconds
 to compute and tells an operator whether to build any of this — which remains the most
 useful thing the project has produced.
+
+---
+
+# Does the answer survive a better forecaster? (2026-08-07)
+
+Every controller experiment in this project used `SeasonalNaiveForecaster`. ARIMA, ETS,
+LightGBM and drift were built and tested but never ran inside a control loop, so every
+headline finding was strictly a finding about *one crude forecaster*. This closes that gap:
+seven workloads × four forecasters × four quantiles, at two commitment windows.
+
+Cells show how many times **forward dominated backward** — cheaper *and* fewer violations at
+the same setting — out of 4 quantiles.
+
+## 6-hour commitment
+
+| workload | daily autocorr | seasonal-naive | drift | ets | lightgbm |
+|---|---:|---:|---:|---:|---:|
+| `azure-llm-code` | **0.730** | **4** | **2** | **4** | 0 |
+| `materna-1` | 0.494 | 0 | 0 | 0 | 0 |
+| `materna-3` | 0.469 | 0 | 0 | 0 | 0 |
+| `materna-2` | 0.450 | 0 | 0 | 0 | 0 |
+| `azure-llm-conv` | 0.349 | 0 | 0 | 0 | 0 |
+| `bitbrains-rnd` | 0.248 | 0 | 0 | 0 | 0 |
+| `bitbrains-fastStorage` | 0.197 | 0 | 0 | 0 | 0 |
+
+## 12-hour commitment
+
+| workload | daily autocorr | seasonal-naive | drift | ets | lightgbm |
+|---|---:|---:|---:|---:|---:|
+| `azure-llm-code` | **0.730** | **4** | **1** | **3** | 0 |
+| `materna-1` | 0.494 | 0 | 0 | 0 | 0 |
+| `materna-3` | 0.469 | 0 | 0 | 0 | 0 |
+| `materna-2` | 0.450 | **2** | 0 | 0 | 0 |
+| `azure-llm-conv` | 0.349 | 0 | 0 | 0 | 0 |
+| `bitbrains-rnd` | 0.248 | 0 | 0 | 0 | 0 |
+| `bitbrains-fastStorage` | 0.197 | 0 | 0 | 0 | 0 |
+
+## Three things this establishes
+
+**1. The positive result is not an artefact of one forecaster.** On `azure-llm-code`, ETS
+reaches 4/4 at six hours and 3/4 at twelve, and drift reaches 2/4 and 1/4. Three independent
+model families agree that this workload rewards forecasting at long commitments.
+
+**2. The negative result is not an artefact either.** On the five low-autocorrelation
+workloads, *no* forecaster won a single cell at six hours. Fifty-six cells, zero wins. The
+earlier conclusion that "forecasting does not pay here" survives replacing the crude model
+with better ones.
+
+**3. LightGBM — the most sophisticated model available — never won a single cell**, at
+either window, on any workload. This is consistent with its known limitation, recorded
+earlier in this document: it is a recursive one-step quantile model whose bands do not widen
+with horizon (p99−p50 measured at 31.95 at step 1 versus 30.12 at step 48). Asked for a
+median path across a 6–12 hour window, it has nothing useful to say. **Sophistication is not
+the axis that matters here; matching the model to the horizon is.**
+
+## The threshold is a rule of thumb, and it has an exception
+
+The 0.50 cutoff used in the shipped diagnostic gets 27 of 28 cells right at six hours and 26
+of 28 at twelve. But the exception is real and it is not in the direction that flatters the
+rule: **`materna-2` at r = 0.450 — *below* the threshold — won 2 of 4 at twelve hours, while
+`materna-1` at r = 0.494 — *above* it — won none.** The ordering by autocorrelation is
+violated between two traces from the same provider.
+
+Two candidate explanations, neither verified: `materna-2` is the trace spanning Christmas
+and New Year, so it carries a genuine level shift a seasonal model may exploit; or 2 of 4
+with a single forecaster is simply noise. **Reported as unresolved rather than explained
+away.**
+
+So the honest statement is: daily autocorrelation **orders** these workloads well and
+predicts the extremes reliably, but it is not a calibrated boundary and a value near 0.45–0.50
+does not settle the question. The dashboard says as much, and Q13 remains **open**.
