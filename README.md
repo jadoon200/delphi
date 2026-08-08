@@ -44,6 +44,21 @@ that a unit of unmet demand costs 19x a unit of idle capacity. DELPHI states it.
   contend for one device and the capacity currency is GPU-seconds, not CPU.
 - A **read-only API and dashboard** serving a snapshot baked at image build.
 
+## Where this sits in the literature
+
+The premise — that a capacity controller consumes a *decision*, so forecast accuracy is the
+wrong objective to optimise — is the founding position of **decision-focused learning** and
+the predict-then-optimize literature, whose result is that better predictive accuracy does
+not in general produce better decisions. DELPHI is a decision-focused evaluation of capacity
+control, applied to a domain where that framing is not yet standard practice.
+
+Two consequences are worth stating up front. The incumbent it measures against is Google
+Autopilot's percentile recommender, not threshold HPA — beating threshold HPA is routine and
+proves little. And the predictability diagnostic is a cruder instrument than the field's:
+spectral entropy is the established forecastability measure, and a single lagged correlation
+is known to be weaker, which is very likely why it failed to generalise (see Q13). Replacing
+it with spectral entropy is the clearest improvement available to this project.
+
 ## Read the evaluation
 
 [`docs/EVAL.md`](docs/EVAL.md) is the real artifact. It carries the Pareto frontiers, the
