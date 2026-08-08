@@ -161,14 +161,21 @@ def findings() -> list[Finding]:
             question="Does a price-derived compliance target beat a conventional fixed one?",
             prior="Only when prices are asymmetric enough to matter.",
             answer=(
-                "Yes in 19 of 24 settings. The newsvendor identity q* = C_u/(C_u+C_o) sets "
-                "the percentile that convention normally fixes at p95."
+                "Only where the true price ratio differs from the one p95 silently assumes. "
+                "Strictly better in 9 of 18 settings, worse in 6, identical in 3 — and the "
+                "split is not random: the derived target wins whenever C_u/C_o is below 19 "
+                "and loses above it."
             ),
             verdict="confirmed",
             evidence=(
-                "At C_u/C_o = 19 the derived target equals the p95 convention exactly and "
-                "the two agree to the cent — a forced algebraic identity that serves as a "
-                "consistency check on the harness."
+                "Three traces x six cost ratios, re-measured after the 2026-08-08 "
+                "actuation-delay fix. At C_u/C_o = 19 the derived target equals the p95 "
+                "convention exactly and the two agree to the cent — a forced algebraic "
+                "identity that serves as a consistency check on the harness, not a win. "
+                "Above 19 the derived target loses in realised terms, which is a negative "
+                "against this project's own hypothesis; the likely mechanism is that a "
+                "seasonal-naive p98/p99 is its least trustworthy region, so sizing off a "
+                "miscalibrated tail buys capacity that does not pay for itself."
             ),
         ),
         Finding(
@@ -181,7 +188,16 @@ def findings() -> list[Finding]:
                 "reached a 1% violation rate at all."
             ),
             verdict="confirmed",
-            evidence="Demand p95/mean was near 1.2; there was nothing for a forecaster to add.",
+            evidence=(
+                "On Azure Functions workload 1, static at 6 replicas holds a 0.5% violation "
+                "rate for $41.9 and the cheapest point on the whole frontier is also static, "
+                "at $34.9. Neither the budget-paced nor the newsvendor controller reaches 1% "
+                "violations on this workload at any setting. The reason is in the data rather "
+                "than mysterious: demand averages about 15,244 invocations/min against a p95 "
+                "of 18,092, so the frontier's entire dynamic range is 23.8% of its cheapest "
+                "point and there is very little for a forecaster to add. A stable workload "
+                "does not need prediction, and reporting otherwise would be dishonest."
+            ),
         ),
         Finding(
             question_id="Q11",
@@ -220,18 +236,24 @@ def findings() -> list[Finding]:
             question="Does daily autocorrelation predict whether forecasting will pay?",
             prior="Proposed as a diagnostic after the mixed results above.",
             answer=(
-                "It predicted every outcome measured so far. High-autocorrelation workloads "
-                "reward forecasting at long commitments; low-autocorrelation ones never did, "
-                "at any commitment length."
+                "Only on aggregated demand, and it does not generalise past it. On fleet "
+                "traces the 0.50 cutoff is nearly perfect. On individual serverless workloads "
+                "it is a coin flip, and the relationship is not even monotone."
             ),
-            verdict="open",
+            verdict="refuted",
             evidence=(
-                "Across 7 workloads x 4 forecasters x 4 quantiles, the 0.50 cutoff gets 27 of "
-                "28 cells right at a 6-hour commitment. But there is a real exception in the "
-                "unflattering direction: materna-2 at r=0.450, below the threshold, won 2 of 4 "
-                "at 12 hours while materna-1 at r=0.494, above it, won none. Autocorrelation "
-                "orders these workloads well and predicts the extremes reliably; it is not a "
-                "calibrated boundary, and a value near 0.45-0.50 does not settle the question."
+                "Across 7 fleet-aggregate workloads x 4 forecasters x 4 quantiles the cutoff "
+                "gets 27 of 28 cells right at a 6-hour commitment. Tested on 43 individual "
+                "Azure Functions workloads, sampled to over-represent the borderline band, it "
+                "scores 51% at 6 hours and 47% at 12 — worse than always predicting that "
+                "forecasting pays. Win rate rises from 12-25% below r=0.20 to 67-83% in "
+                "0.20-0.50, then falls again above 0.70. Replacing it with spectral entropy, "
+                "the forecastability literature's standard measure, was tried and did worse "
+                "(AUC 0.396 and 0.456). The one candidate showing signal — the share of "
+                "spectral power slower than the commitment window — reaches AUC 0.700 at 12 "
+                "hours but does not survive Bonferroni across the six tests run, so it is "
+                "recorded as a lead rather than promoted. What survives: below r=0.20, "
+                "forecasting failed to pay on every population tested."
             ),
         ),
     ]
