@@ -157,6 +157,12 @@ def apply_actuation_delay(requested: IntArray, profile: CapacityProfile) -> IntA
 
     A later request supersedes one still in flight, which is what a real reconciliation
     loop does: it acts on the current desired state, not on a backlog of past intentions.
+    **Superseding retargets the change in flight; it does not restart its clock.** Pods
+    already starting do not begin again because the desired count moved, so a request that
+    keeps moving still lands every ``lag`` steps at whatever is desired by then. Restarting
+    the timer instead would freeze capacity for any continuously-varying plan — an
+    unrequestable state that silently penalises exactly the smooth, forecast-driven
+    controllers this project exists to evaluate.
     """
     steps = len(requested)
     provisioned = np.empty(steps, dtype=np.int64)
@@ -166,11 +172,14 @@ def apply_actuation_delay(requested: IntArray, profile: CapacityProfile) -> IntA
 
     for step in range(steps):
         target = int(requested[step])
-        in_flight = pending_target if pending_target is not None else current
-        if target != in_flight:
-            lag = profile.startup_steps if target > current else profile.teardown_steps
+        if pending_target is None:
+            if target != current:
+                lag = profile.startup_steps if target > current else profile.teardown_steps
+                pending_target = target
+                pending_at = step + max(lag, 0)
+        elif target != pending_target:
+            # Retarget the in-flight change, keeping its original landing step.
             pending_target = target
-            pending_at = step + max(lag, 0)
         if pending_target is not None and step >= pending_at:
             current = pending_target
             pending_target = None

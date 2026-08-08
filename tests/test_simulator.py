@@ -51,6 +51,26 @@ def test_a_later_request_supersedes_one_still_in_flight() -> None:
     assert provisioned.tolist()[-1] == 9
 
 
+def test_a_continuously_changing_request_still_lands() -> None:
+    """Superseding retargets the in-flight change; it must not restart its clock.
+
+    Restarting it froze capacity forever under any monotone ramp — a 1..12 request served
+    a flat 1 replica — which silently penalised every smooth, forecast-driven controller
+    while leaving the deadbanded reactive baseline untouched. The ranking-based validation
+    gate could not see it because it moved all controllers the same way.
+    """
+    profile = _profile(startup_seconds=180.0)  # three steps
+    requested = np.arange(1, 13, dtype=np.int64)
+    provisioned = apply_actuation_delay(requested, profile)
+
+    assert provisioned[-1] > provisioned[0], "a rising request must eventually provision"
+    assert provisioned.tolist() == [1, 1, 1, 1, 5, 5, 5, 5, 9, 9, 9, 9]
+
+    # And a ramp that settles must reach the level it settled on.
+    settling = np.asarray([1, 2, 3, 4, 5, 6, 6, 6, 6, 6, 6, 6], dtype=np.int64)
+    assert apply_actuation_delay(settling, profile).tolist()[-1] == 6
+
+
 def test_zero_actuation_delay_makes_the_plan_immediate() -> None:
     profile = _profile(startup_seconds=0.0, teardown_seconds=0.0)
     requested = np.asarray([1, 7, 2], dtype=np.int64)

@@ -183,13 +183,19 @@ def check_sensitivity() -> bool:
     scored = slice(SEASON * 15, None)
     start_step = SEASON * 10
 
-    print("### 4a. Lead time — the pre-registered prediction (Q1)\n")
-    print("The proactive margin must *grow* with `startup_seconds`. If it does not, the")
-    print("simulator's actuation delay is not doing its job.\n")
+    print("### 4a. Lead time — mechanism check, and the Q1 measurement\n")
+    print("**Gated:** longer actuation lag must never *help* either controller. That is a")
+    print("property of the simulator and it is what this check enforces.\n")
+    print("**Reported, not gated:** the proactive margin. This check used to require the")
+    print("margin to grow with lead, treating a pre-registered hypothesis as a correctness")
+    print("condition — so a wrong hypothesis could only ever look like a broken simulator.")
+    print("The margin is now measured and printed, and Q1 is answered in `docs/EVAL.md`")
+    print("whichever way it falls.\n")
     print("| startup (steps) | reactive viol. | proactive viol. | margin | rel. reduction |")
     print("|---:|---:|---:|---:|---:|")
     margins = []
     reactive_rates = []
+    proactive_rates = []
     for lead_steps in (0, 1, 2, 4, 8):
         profile = CapacityProfile(
             workload_id="w",
@@ -219,25 +225,36 @@ def check_sensitivity() -> bool:
         )
         margins.append(reactive - proactive)
         reactive_rates.append(reactive)
+        proactive_rates.append(proactive)
         relative = (reactive - proactive) / reactive if reactive > 0 else float("nan")
         print(
             f"| {lead_steps} | {reactive:.3f} | {proactive:.3f} | "
             f"{reactive - proactive:+.3f} | {relative:.1%} |"
         )
+
+    tol = 1e-9
+    lag_hurts = all(
+        later >= earlier - tol
+        for rates in (reactive_rates, proactive_rates)
+        for earlier, later in pairwise(rates)
+    )
+    print(
+        f"\n**Longer lag never helps: {'PASS' if lag_hurts else 'FAIL'}** — violations are "
+        "weakly increasing in lead for both controllers, so the actuation delay is doing "
+        "its job."
+    )
     grows = margins[-1] > margins[0]
     monotone = all(later >= earlier for earlier, later in pairwise(margins))
-    saturated = max(reactive_rates) > 0.5
     print(
-        f"\n**Margin grows with lead time: {'PASS' if grows else 'FAIL'}** "
-        f"({margins[0]:+.3f} at 0 steps -> {margins[-1]:+.3f} at 8 steps)"
+        f"- Q1, measured: the margin {'grows' if grows else 'SHRINKS'} with lead "
+        f"({margins[0]:+.3f} at 0 steps -> {margins[-1]:+.3f} at 8 steps); "
+        f"{'monotone' if monotone else 'non-monotone'} across the sweep."
     )
-    print(f"- Monotone across every lead: {'yes' if monotone else 'NO — margin is non-monotone'}")
-    if saturated:
+    if max(reactive_rates) > 0.5:
         print(
             "- **Saturation warning:** the reactive baseline exceeds 50% violations at the "
             "longer leads, so both controllers are mostly failing there. Read the *ranking* "
-            "in this table, not the levels: a tight utilisation ceiling plus integer "
-            "replicas makes the violation rate hypersensitive. Recorded per L5 Trap 3."
+            "in this table, not the levels. Recorded per L5 Trap 3."
         )
     print()
 
@@ -311,7 +328,7 @@ def check_sensitivity() -> bool:
         row = [_score(plan, demand, profile, costs, scored)[1] for plan in plans.values()]
         print(f"| {churn:.0f} | " + " | ".join(f"{value:.1f}" for value in row) + " |")
     print()
-    return grows and stable
+    return lag_hurts and stable
 
 
 def main() -> None:
