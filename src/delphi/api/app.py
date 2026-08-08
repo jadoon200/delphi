@@ -32,6 +32,7 @@ from delphi.api.snapshot import (
 )
 from delphi.config import get_settings
 from delphi.control.newsvendor import CostRatio
+from delphi.forecast.predictability import optional_lag_autocorrelation
 
 SNAPSHOT_ENV = "DELPHI_SNAPSHOT_PATH"
 DEFAULT_SNAPSHOT = Path("data/snapshot.json")
@@ -190,12 +191,8 @@ def score(request: Annotated[DiagnosticRequest, Body()]) -> DiagnosticResponse:
             status_code=422, detail="a constant series has no structure to diagnose"
         )
 
-    centred = values - values.mean()
-
     def autocorrelation(lag: int) -> float | None:
-        if lag < 1 or len(values) <= lag + 8:
-            return None
-        return float(np.corrcoef(centred[:-lag], centred[lag:])[0, 1])
+        return optional_lag_autocorrelation(values, lag)
 
     per_day = max(round(86400 / request.step_seconds), 1)
     daily = autocorrelation(per_day)

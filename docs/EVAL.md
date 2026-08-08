@@ -1120,3 +1120,79 @@ LightGBM result — needs narrowing to a statement about decisions rather than a
 No claim was contradicted outright. The Q13 negative result is independently predicted by
 the forecastability literature, which is the strongest single piece of evidence that the
 measurement apparatus here is working correctly.
+
+---
+
+# Racing the predictability measures (2026-08-08)
+
+Q13 showed the shipped diagnostic does not generalise, and the forecastability literature
+offered a specific reason and a specific fix: a single lagged correlation reads one
+frequency, spectral entropy reads all of them. **The fix was tried and it did not work.**
+
+## What was raced
+
+Three training-free measures, scored against the same target — did forecasting pay, by total
+economic cost, at a 6 h and 12 h commitment — on the same 43 serverless workloads from Q13
+plus the 5 non-GPU fleet workloads:
+
+1. **Daily autocorrelation** — what shipped.
+2. **Spectral predictability**, `1 − normalised spectral entropy` over a Welch-averaged
+   periodogram — the field's standard forecastability feature.
+3. **Low-frequency power fraction** — the share of spectral power at periods *longer than
+   the commitment window*. Not from the literature; motivated by this project's own Q1
+   result, that a decision fixed for N hours can only exploit structure slower than N hours.
+   Alone among the three it is a function of the decision horizon, not of the series only.
+
+Comparison is by **AUC**, which needs no cutoff. Reporting each measure at its own best
+threshold would let a measure win by fitting a cutoff to 43 points, so best-threshold
+accuracy is shown only as a clearly-labelled optimistic bound.
+
+## Result
+
+Serverless workloads, n = 43, with a 20,000-draw permutation test on each AUC:
+
+| measure | AUC @ 6 h | p | AUC @ 12 h | p |
+|---|---:|---:|---:|---:|
+| daily autocorrelation | 0.539 | 0.67 | 0.438 | 0.50 |
+| spectral predictability | 0.396 | 0.26 | 0.456 | 0.63 |
+| low-frequency power | 0.595 | 0.31 | **0.700** | **0.027** |
+
+**Spectral entropy failed.** At 0.396 and 0.456 it is at or below a coin flip, and on the
+fleet workloads it is actively anti-predictive (AUC 0.167 at 6 h, though n = 5 there makes
+that number nearly meaningless). The literature's recommended instrument did not rescue the
+diagnostic on this population, and predicting that it would was wrong.
+
+**The horizon-relative measure is the only one showing signal**, and it is not from the
+literature — it comes from this project's own Q1 finding. At a twelve-hour commitment it
+reaches AUC 0.700 with a nominal p = 0.027.
+
+## Why that 0.700 is not being shipped
+
+Six tests were run (3 measures x 2 windows). A Bonferroni-corrected threshold is p < 0.0083,
+and 0.027 does not clear it. Picking the largest of six AUCs and quoting its uncorrected
+p-value is precisely how a result gets manufactured, and this project's own doctrine says an
+implausibly clean number is an artefact until proven otherwise.
+
+So the honest status is: **a promising lead on one cohort, at one horizon, that does not
+survive correction for the number of things tried.** It is not a finding, and the shipped
+diagnostic is unchanged.
+
+## What this means for the diagnostic
+
+The product keeps daily autocorrelation and keeps the scope caveat Q13 forced onto it. That
+is not because autocorrelation is good — on serverless it is a coin flip — but because
+nothing tested beat it well enough to justify swapping the claim a visitor reads.
+
+The measures are implemented, unit-tested against signals with known answers, and available
+in `delphi.forecast.predictability` for the follow-up, which is now well defined: test
+low-frequency power on a much larger cohort with the horizon fixed in advance, as a single
+pre-registered hypothesis rather than one of six. On a fresh cohort with one test, p < 0.05
+would mean something.
+
+## Added to the negatives ledger
+
+- **Spectral entropy did not improve on daily autocorrelation** for predicting whether
+  forecasting pays, on either population — contradicting the expectation drawn from the
+  forecastability literature.
+- **The one measure that showed signal does not survive multiple-comparison correction**, and
+  is reported as a lead rather than promoted into the product.
