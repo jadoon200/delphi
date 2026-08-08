@@ -3,6 +3,11 @@
 **Capacity planning that tells you whether prediction can help before it sells you a
 predictor — then sizes capacity from the price of failure rather than from convention.**
 
+**Live: [delphi-c5pp.onrender.com](https://delphi-c5pp.onrender.com)** — paste a demand
+series and get a verdict. On a free tier, so the first request after an idle period takes
+about a minute to wake the container; the snapshot is baked at image build and the badge
+says `demo` because it is.
+
 DELPHI set out to show that a calibrated forecast beats conventional autoscaling. Measured
 against the recommender Kubernetes actually ships, it mostly does not. The useful result is
 the boundary: forecasting pays when capacity is committed for hours at a time *and* demand
