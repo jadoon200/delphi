@@ -225,6 +225,21 @@ class StatsForecastForecaster:
 
 @dataclass(frozen=True)
 class LightGBMQuantileForecaster:
+    """Per-quantile one-step models rolled forward recursively.
+
+    Known limitation, measured 2026-08-03: because each quantile model is a *one-step*
+    model applied recursively along its own path, the emitted band does not widen with
+    lead time (p99-p50 measured at 31.95 at step 1 and 30.12 at step 48 on a clean daily
+    trace). Horizon-h quantiles therefore under-state horizon-h uncertainty, which for a
+    capacity controller means systematic under-provisioning at long lead times.
+
+    Mitigation in place: ``SplitConformalCalibrator.fit_by_horizon`` fits one correction
+    per horizon step, which restores the widening empirically. Do not consume this
+    forecaster's raw quantiles at horizons beyond one step without per-horizon
+    calibration. A direct multi-horizon model (one model per step) is the proper fix and
+    is deferred, not solved.
+    """
+
     feature_spec: FeatureSpec = field(default_factory=FeatureSpec)
     n_estimators: int = 120
     learning_rate: float = 0.05

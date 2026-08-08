@@ -13,10 +13,19 @@ from delphi.db.base import Base
 _VERSIONS_DIR = Path(__file__).resolve().parent.parent / "migrations" / "versions"
 
 
-def _schema(engine: Engine) -> dict[str, dict[str, bool]]:
+def _schema(engine: Engine) -> dict[str, dict[str, tuple[str, bool]]]:
+    """Capture column type *and* nullability.
+
+    Comparing names and nullability alone lets a type drift through — a migration column
+    declared TEXT against an ORM column declared TIMESTAMP would pass silently, and the
+    first real deployment would be the thing that noticed.
+    """
     inspector = inspect(engine)
     return {
-        table: {column["name"]: bool(column["nullable"]) for column in inspector.get_columns(table)}
+        table: {
+            column["name"]: (str(column["type"]), bool(column["nullable"]))
+            for column in inspector.get_columns(table)
+        }
         for table in inspector.get_table_names()
         if table != "alembic_version"
     }

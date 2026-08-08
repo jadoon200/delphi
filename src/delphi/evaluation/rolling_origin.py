@@ -45,12 +45,27 @@ class BacktestResult:
     records: tuple[ForecastRecord, ...]
 
     def arrays(self) -> tuple[FloatArray, FloatArray]:
+        """Flatten every origin and horizon step into one pooled axis.
+
+        Pooling is only appropriate when the horizon is one step, or when a metric is
+        deliberately averaged across the horizon. Calibrators must use
+        :meth:`arrays_by_horizon`, because forecast error grows with horizon and a single
+        pooled correction over-corrects step 1 while under-correcting the last step.
+        """
         if not self.records:
             raise ValueError("backtest contains no forecast records")
         actual = np.concatenate([record.actual for record in self.records])
         predicted = np.concatenate(
             [record.forecast.quantile_values for record in self.records], axis=0
         )
+        return actual, predicted
+
+    def arrays_by_horizon(self) -> tuple[FloatArray, FloatArray]:
+        """Return ``actual[origins, horizon]`` and ``predicted[origins, horizon, levels]``."""
+        if not self.records:
+            raise ValueError("backtest contains no forecast records")
+        actual = np.stack([record.actual for record in self.records])
+        predicted = np.stack([record.forecast.quantile_values for record in self.records])
         return actual, predicted
 
 

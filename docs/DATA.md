@@ -19,3 +19,23 @@ Functions absent on a later day receive 1,440 explicit `is_imputed=true`, `quali
 Retrieval date, byte size, SHA-256, exact citation, and cohort-selection seed are added when a
 source is fetched or selected. An unverified licence is a stop condition, not permission to omit
 the record.
+
+## Azure LLM inference traces 2024
+
+| Field | Value |
+|---|---|
+| Source | `github.com/Azure/AzurePublicDataset`, release `dataset-llm-2024` |
+| Licence | **CC-BY 4.0** (repo-root `LICENSE`, verified 2026-08-03) |
+| Citation | Jovan Stojkovic, Chaojie Zhang, Inigo Goiri, Josep Torrellas, Esha Choukse. *DynamoLLM: Designing LLM Inference Clusters for Performance and Energy Efficiency*, HPCA 2025. |
+| Retrieved | 2026-08-03 |
+| Period | 2024-05-10 to 2024-05-19 |
+| Schema | `TIMESTAMP` (absolute UTC), `ContextTokens`, `GeneratedTokens` |
+
+| File | Size | Requests | SHA-256 |
+|---|---:|---:|---|
+| `AzureLLMInferenceTrace_code_1week.csv` | 660 MB | 16,803,695 | `71de5c55cbc35f8f1ed0b6b7806b4cd1e9764b0058469725a6aac98023a1448f` |
+| `AzureLLMInferenceTrace_conv_1week.csv` | 1.1 GB | 27,303,999 | `a0cc9b969a9bbf0fd811802cbf4323edd3a209ace791e3799ad4f9207f213941` |
+
+Not redistributed; `scripts/` fetches from the release URL and `data/` is gitignored.
+Timestamps are absolute UTC, so unlike the anonymized Azure Functions trace there is no
+epoch assumption and day-of-week is a fact rather than a convention.

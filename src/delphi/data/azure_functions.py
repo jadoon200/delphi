@@ -11,6 +11,8 @@ from pathlib import Path
 from typing import TextIO
 
 import numpy as np
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
 from delphi.data.series import DemandSeries, concatenate_series
@@ -26,6 +28,18 @@ CITATION = (
     "Shahrad et al., Serverless in the Wild: Characterizing and Optimizing the Serverless "
     "Workload at a Large Cloud Provider, USENIX ATC 2020."
 )
+#: NOMINAL anchor for day 1. The published trace is anonymized and states only "July 2019";
+#: no calendar date is given, so this is a *convention*, not a fact.
+#:
+#: Measured 2026-08-03 over the first 40k functions of each day file: daily totals run
+#: 788M-937M invocations with no weekly dip, and the two highest days are d13/d14 — which
+#: this anchor labels Saturday and Sunday. The data therefore does NOT corroborate the
+#: anchor, and no other Monday-to-Sunday alignment fits either.
+#:
+#: Consequence: absolute weekday is unknown. Relative structure (lag 1440 = one day, lag
+#: 10080 = one week) is unaffected and internally consistent, and the cyclical weekday
+#: sin/cos features only shift phase, which a tree model recovers. The one feature that is
+#: genuinely unreliable is ``is_weekend``; see ``causal_feature_row``.
 TRACE_START = date(2019, 7, 15)
 
 
@@ -191,9 +205,50 @@ def azure_source(*, retrieved_at: datetime, sha256: str = ARCHIVE_SHA256) -> Dem
         retrieved_at=retrieved_at,
         terms_note="Repo-wide CC-BY 4.0; attribution required; raw trace is not redistributed.",
         epoch_assumption=(
-            "Day d01 is anchored to 2019-07-15 00:00 UTC; columns 1..1440 are minutes."
+            "Day d01 is anchored to 2019-07-15 00:00 UTC; columns 1..1440 are minutes. "
+            "The anchor is NOMINAL: the trace is anonymized and publishes no calendar "
+            "date, and measured daily totals show no weekly dip, so absolute weekday is "
+            "unverified. Relative day/week lags are unaffected."
         ),
     )
+
+
+def _upsert_demand_points(session: Session, rows: list[dict[str, object]]) -> None:
+    """Bulk-upsert demand points in one statement per chunk.
+
+    ``Session.merge`` issues a SELECT and then an INSERT or UPDATE *per row*. A 14-day
+    cohort is ~20k points per workload, so a 40-workload cohort is ~800k round trips —
+    slow enough to make ingestion unusable. Both supported dialects implement
+    ``ON CONFLICT``, so the natural key does the idempotency instead.
+    """
+    if not rows:
+        return
+    dialect = session.get_bind().dialect.name
+    updates = ("value", "is_imputed", "quality")
+    for start in range(0, len(rows), _UPSERT_CHUNK):
+        chunk = rows[start : start + _UPSERT_CHUNK]
+        if dialect == "postgresql":
+            pg_statement = postgresql_insert(DemandPoint).values(chunk)
+            session.execute(
+                pg_statement.on_conflict_do_update(
+                    index_elements=["workload_id", "ts"],
+                    set_={name: getattr(pg_statement.excluded, name) for name in updates},
+                )
+            )
+        elif dialect == "sqlite":
+            lite_statement = sqlite_insert(DemandPoint).values(chunk)
+            session.execute(
+                lite_statement.on_conflict_do_update(
+                    index_elements=["workload_id", "ts"],
+                    set_={name: getattr(lite_statement.excluded, name) for name in updates},
+                )
+            )
+        else:  # pragma: no cover - only these two dialects are supported
+            for row in chunk:
+                session.merge(DemandPoint(**row))
+
+
+_UPSERT_CHUNK = 5_000
 
 
 def upsert_series(
@@ -224,16 +279,20 @@ def upsert_series(
                 deadline_slack_seconds=None,
             )
         )
-        for index, timestamp in enumerate(item.timestamps):
-            session.merge(
-                DemandPoint(
-                    workload_id=item.workload_id,
-                    ts=timestamp,
-                    value=float(item.values[index]),
-                    is_imputed=bool(item.is_imputed[index]),
-                    quality=float(item.quality[index]),
-                )
-            )
-            rows += 1
+        session.flush()
+        _upsert_demand_points(
+            session,
+            [
+                {
+                    "workload_id": item.workload_id,
+                    "ts": timestamp,
+                    "value": float(item.values[index]),
+                    "is_imputed": bool(item.is_imputed[index]),
+                    "quality": float(item.quality[index]),
+                }
+                for index, timestamp in enumerate(item.timestamps)
+            ],
+        )
+        rows += len(item.timestamps)
     session.flush()
     return rows

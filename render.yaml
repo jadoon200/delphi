@@ -1,0 +1,14 @@
+# Single free-tier web service. No managed database: Render's free Postgres is 256 MB and
+# expires after 30 days, and the snapshot is a baked artifact anyway.
+services:
+  - type: web
+    name: delphi
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile.web
+    healthCheckPath: /health
+    envVars:
+      - key: DELPHI_SNAPSHOT_MODE
+        value: demo
+      - key: DELPHI_LLM_BACKEND
+        value: template

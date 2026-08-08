@@ -22,6 +22,8 @@ class Settings(BaseSettings):
 
     # Language generation is outside the decision path. The default is deterministic and
     # requires no model, hosted service, API key, or network request.
+    snapshot_path: Path = Path("data/snapshot.json")
+    dashboard_dist: str = "frontend/dist"
     llm_backend: Literal["template", "ollama"] = "template"
     ollama_url: str = "http://localhost:11434"
     ollama_model: str = "qwen2.5:7b"
