@@ -248,3 +248,53 @@ def test_demand_response_is_bounded(client: TestClient, tmp_path: Path) -> None:
             path.write_text(original)
         else:
             path.unlink()
+
+
+def test_spa_route_cannot_be_walked_out_of_the_dist_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Percent-encoded traversal escaped `dist` and served arbitrary container files.
+
+    `/..%2f..%2frequirements-serve.txt` and `/%2e%2e/%2e%2e/etc/hostname` both survived URL
+    normalisation, reached the handler, and were served — as root, in the deploy image.
+    Render's edge rejected them with a 400, but that is an accident of the CDN, not a
+    control, and `docker run` locally had no such cover.
+    """
+    import importlib
+
+    from delphi import config as config_module
+
+    dist = tmp_path / "dist"
+    (dist / "assets").mkdir(parents=True)
+    (dist / "index.html").write_text("<title>DELPHI</title>")
+    (dist / "assets" / "app.js").write_text("// bundle")
+    (tmp_path / "SECRET.txt").write_text("SENSITIVE-CONTENTS")
+
+    monkeypatch.setenv("DELPHI_DASHBOARD_DIST", str(dist))
+    monkeypatch.setenv("DELPHI_SNAPSHOT_PATH", str(tmp_path / "snapshot.json"))
+    config_module.get_settings.cache_clear()
+    reloaded = importlib.reload(app_module)
+    try:
+        client = TestClient(reloaded.app)
+        for probe in (
+            "/../SECRET.txt",
+            "/..%2fSECRET.txt",
+            "/%2e%2e/SECRET.txt",
+            "/..%2f..%2fSECRET.txt",
+            "/%2e%2e%2fSECRET.txt",
+        ):
+            body = client.get(probe).text
+            assert "SENSITIVE-CONTENTS" not in body, f"{probe} escaped the dist directory"
+            assert "DELPHI" in body, f"{probe} should fall through to the SPA shell"
+
+        # Under /assets Starlette's StaticFiles guards its own mount and answers 404
+        # rather than falling through — also safe, just a different shape of refusal.
+        assets_probe = client.get("/assets/..%2f..%2fSECRET.txt")
+        assert "SENSITIVE-CONTENTS" not in assets_probe.text
+        assert assets_probe.status_code == 404
+
+        # A genuine asset inside dist must still be served.
+        assert "// bundle" in client.get("/assets/app.js").text
+    finally:
+        config_module.get_settings.cache_clear()
+        importlib.reload(app_module)

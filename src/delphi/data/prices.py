@@ -101,11 +101,25 @@ def parse_price_items(payload: dict[str, Any], *, retrieved_at: datetime) -> lis
     return prices
 
 
+def _odata_literal(value: str) -> str:
+    """Quote a string for an OData filter, escaping embedded single quotes by doubling.
+
+    These values come from config rather than from a request, so this is not a live
+    injection path — but an unescaped apostrophe would silently malform the query and
+    return the wrong SKU's price, which then propagates into the newsvendor ratio as a
+    plausible-looking number. Cheaper to escape than to debug.
+    """
+    return "'" + value.replace("'", "''") + "'"
+
+
 def build_filter(*, region: str, service_name: str, sku_contains: str | None = None) -> str:
     """Compose the OData ``$filter`` the API expects."""
-    clauses = [f"armRegionName eq '{region}'", f"serviceName eq '{service_name}'"]
+    clauses = [
+        f"armRegionName eq {_odata_literal(region)}",
+        f"serviceName eq {_odata_literal(service_name)}",
+    ]
     if sku_contains:
-        clauses.append(f"contains(skuName, '{sku_contains}')")
+        clauses.append(f"contains(skuName, {_odata_literal(sku_contains)})")
     return " and ".join(clauses)
 
 

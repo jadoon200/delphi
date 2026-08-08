@@ -48,6 +48,15 @@ jobs:
           curl -sf http://localhost:8000/workloads | grep -q 'workload_id'
           curl -sf http://localhost:8000/findings | grep -q 'refuted'
           curl -sf http://localhost:8000/ | grep -q '<title>DELPHI'
+          # The container must not run as root, and the SPA catch-all must not serve
+          # anything outside dist. Percent-encoded traversal previously read arbitrary
+          # container files; Render's edge rejected it, `docker run` did not.
+          test "$(docker exec delphi id -u)" != "0"
+          for probe in '/..%2f..%2frequirements-serve.txt' '/%2e%2e/%2e%2e/%2e%2e/etc/passwd'; do
+            body=$(curl -s --path-as-is "http://localhost:8000$probe")
+            echo "$body" | grep -q 'root:' && { echo "TRAVERSAL: $probe"; exit 1; }
+            echo "$body" | grep -q 'Runtime-only dependencies' && { echo "TRAVERSAL: $probe"; exit 1; }
+          done
           curl -sf -X POST http://localhost:8000/diagnostic/score \
             -H 'Content-Type: application/json' \
             -d "$(python3 -c 'import json,math;print(json.dumps({"values":[60+25*math.sin(i/45.8) for i in range(2000)],"step_seconds":300}))')" \

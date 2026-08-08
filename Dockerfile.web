@@ -46,6 +46,12 @@ ENV PYTHONPATH=/app/src \
     DELPHI_SNAPSHOT_MODE=demo \
     PORT=8000
 
+# Drop root. Nothing here needs it: the app reads a baked snapshot and writes nothing. A
+# read-only API running as uid 0 turns any file-disclosure bug into a read of the whole
+# container, which is exactly what the SPA traversal bug would have done.
+RUN useradd --create-home --uid 10001 delphi && chown -R delphi:delphi /app
+USER delphi
+
 EXPOSE 8000
 
 # Render injects $PORT; default to 8000 for local runs of the exact deploy image.
