@@ -46,14 +46,19 @@ it measured is narrower and more useful:
    model mostly adds its own error.
 2. **In the commitment regime it does win** — where capacity is fixed for hours and reaction
    is structurally unavailable — but only on demand with genuine daily structure.
-3. **Which regime you are in is cheap to measure.** Daily autocorrelation orders workloads
-   well and predicts the extremes reliably. It is a rule of thumb, not a calibrated
-   boundary: it calls 27 of 28 cells correctly at a six-hour commitment, and the one
-   exception runs against the rule. Q13 is open.
+3. **Which regime you are in is cheap to measure — on aggregated demand.** Daily
+   autocorrelation calls 27 of 28 cells correctly at a six-hour commitment across seven
+   fleet-aggregate workloads.
+4. **Q13, answered: it does not generalise.** On 43 individual Azure Functions workloads the
+   same cutoff scores 51% at six hours and 47% at twelve — a coin flip, and worse than
+   ignoring the diagnostic entirely — with a non-monotone relationship that no version of
+   the rule predicted. Only the bottom of the range transfers: below ~0.20, forecasting
+   failed to pay on both populations.
 
 The shipped artifact is therefore a **diagnostic that tells you whether to build a forecaster
-at all**, not a forecaster. That is a smaller claim than the one the project started with,
-and it is the one the measurements support.
+at all**, scoped to aggregated demand and stating that scope on its own results page. That is
+a considerably smaller claim than the one the project started with, and it is the one the
+measurements support.
 
 Bitbrains is not on the critical path because its canonical host could not be verified; the
 Materna fleet traces and the synthetic multi-resource regime carry the joint-provisioning

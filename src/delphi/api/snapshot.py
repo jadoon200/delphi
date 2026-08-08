@@ -113,16 +113,20 @@ class Snapshot(BaseModel):
         return next((w for w in self.workloads if w.workload_id == workload_id), None)
 
 
-#: The threshold the evaluation established. It is a rule of thumb, not a calibrated
-#: boundary: across 7 workloads x 4 forecasters x 4 quantiles it calls 27 of 28 cells
-#: correctly at a six-hour commitment and 26 of 28 at twelve hours. The known exception runs
-#: *against* the rule — `materna-2`, at r = 0.450, won 2 of 4 cells at twelve hours while
-#: `materna-1` at r = 0.494 won none — so a value near 0.45-0.50 does not settle the
-#: question. See `docs/EVAL.md`; Q13 is open.
+#: The threshold the evaluation established **on fleet-aggregate demand**: across 7 such
+#: workloads x 4 forecasters x 4 quantiles it calls 27 of 28 cells correctly at a six-hour
+#: commitment and 26 of 28 at twelve.
+#:
+#: Q13 tested whether it generalises, and it does not. On 43 individual Azure Functions
+#: workloads the same cutoff scores 51% at six hours and 47% at twelve — a coin flip, and
+#: worse than always predicting that forecasting pays. The relationship there is not even
+#: monotone: win rate falls again above r = 0.70. The diagnostic is therefore scoped to
+#: aggregated demand, and only the bottom of the range transfers. See `docs/EVAL.md`.
 FORECASTABLE_AUTOCORRELATION = 0.50
 
-#: Below this, the evaluation found no exceptions at all: no forecaster won a single cell.
-NO_STRUCTURE_AUTOCORRELATION = 0.30
+#: Below this, forecasting failed to pay on *both* populations tested. This is the one part
+#: of the diagnostic that survived the generalisation test.
+NO_STRUCTURE_AUTOCORRELATION = 0.20
 
 #: Width of the band around the threshold where the ordering was observed to break down.
 INDETERMINATE_BAND = (0.40, 0.55)
@@ -169,16 +173,21 @@ def classify(daily_autocorrelation: float) -> tuple[bool, str]:
         )
     if band == "strong":
         return True, (
-            "Strong daily structure. Forecasting is expected to pay at commitment windows "
-            "of roughly six hours or longer, where reaction is impossible."
+            "Strong daily structure. On aggregated demand — a fleet, a cluster, a whole "
+            "service — forecasting is expected to pay at commitment windows of roughly six "
+            "hours or longer, where reaction is impossible. If this is a single spiky "
+            "workload rather than an aggregate, treat that as untested: on individual "
+            "serverless functions this reading predicted nothing."
         )
     if band == "weak":
         return False, (
             "Weak daily structure. No forecaster tested beat a trailing percentile here at "
-            "a six-hour commitment; the one exception measured, at twelve hours, sat higher "
-            "in the borderline band."
+            "a six-hour commitment on aggregated demand; the one exception measured, at "
+            "twelve hours, sat higher in the borderline band."
         )
     return False, (
-        "Effectively no daily structure. A trailing percentile — or at long horizons a flat "
-        "average — is the right tool; an explicit forecast only adds its own error."
+        "Effectively no daily structure. This is the one part of the diagnostic that held on "
+        "every population tested, aggregate and serverless alike. A trailing percentile — or "
+        "at long horizons a flat average — is the right tool; an explicit forecast only adds "
+        "its own error."
     )

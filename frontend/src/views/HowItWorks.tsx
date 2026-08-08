@@ -91,7 +91,8 @@ export default function HowItWorks() {
           At a 12-hour commitment on the one workload with strong daily structure, forecasting
           halved the violation rate <em>while costing less</em>. Across seven workloads and four
           forecasters, daily autocorrelation called 27 of 28 outcomes correctly at six hours and
-          26 of 28 at twelve.
+          26 of 28 at twelve — on <em>fleet-aggregate</em> demand. On 43 individual serverless
+          workloads the same cutoff scored 51%, so the diagnostic is scoped to aggregates.
         </p>
         <div className="callout limits" style={{ marginTop: 14 }}>
           <strong>The threshold is a rule of thumb, and it has a known exception.</strong> Two

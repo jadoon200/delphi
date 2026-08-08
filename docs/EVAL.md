@@ -931,3 +931,89 @@ trust the threshold. `test_borderline_verdicts_disclose_the_measured_exception` 
   simulator would have been reported as broken.
 - **The shipped diagnostic contradicted this document** for one day, in the direction that
   flattered the rule.
+
+---
+
+# Q13 answered: the threshold does not generalise (2026-08-08)
+
+Q13 asked whether 0.50 is a real boundary or a round number that seven workloads flattered.
+It is closer to the second, and the honest answer narrows the diagnostic's scope
+considerably.
+
+## Method
+
+Azure Functions 2019 — CC-BY, already fetched and checksum-verified, so no new licence
+question — aggregated to 5-minute bins. 400 functions loaded, 186 usable after excluding
+sparse and degenerate series, 43 simulated. **Sampling was deliberately hostile:** stratified
+by the diagnostic and oversampled in the 0.40–0.55 borderline band, so most evidence comes
+from where the threshold is least defensible.
+
+Two methodology corrections were needed first, and both changed the answer:
+
+1. **Pareto dominance is the wrong scorer.** `evaluate_diagnostic.dominance` counts a cell
+   only when forward is no worse on *both* cost and violations. On `762d22c5a3d7`
+   (r = 0.892) forecasting cut violations from 0.193 to 0.072 — a factor of 2.7 — while
+   costing 6% more, and that is recorded as *not a win*. Scored that way the question being
+   answered is "must forecasting be free?", not "does forecasting pay?". Cells are now
+   scored on total economic cost at the ratio the quantile implies, `C_u/C_o = q/(1-q)`,
+   which is the newsvendor objective this project already uses for Q4.
+2. **The replica-sizing heuristic degenerates on serverless traces.** `_fleet_workload`
+   scales capacity by `median/8`; `2b373145c4fa` is 65% zeros, so its median is 0, the floor
+   applies, and the run reported a mean of 17,413 replicas. Sizing off the p95 instead keeps
+   the replica count sane at any sparsity and is applied identically to both controllers.
+
+`dominance` also counts a *tie* — both controllers emitting an identical plan — as a forward
+win. That never fired on the fleet traces (verified: every published win is strict, no plan
+pair identical, including `materna-2`'s 2 of 4, so **the published 27-of-28 stands**) but it
+fires often on low-volume functions, where it would manufacture agreement out of nothing.
+Ties are now counted and excluded.
+
+## Result
+
+| daily autocorrelation | n | workloads where forecasting paid (6 h) | (12 h) |
+|---|---:|---:|---:|
+| < 0.20 | 8 | 25% | 12% |
+| 0.20 – 0.35 | 6 | 67% | 83% |
+| 0.35 – 0.50 | 13 | 69% | 69% |
+| 0.50 – 0.70 | 7 | 57% | 71% |
+| > 0.70 | 9 | 67% | 33% |
+
+**The relationship is not monotone.** It rises out of the noise floor and then *falls* again
+at the top: on serverless workloads, high daily autocorrelation does not imply that
+forecasting pays.
+
+Scored against the shipped 0.50 cutoff, accuracy is **22/43 (51%) at six hours and 20/43
+(47%) at twelve** — a coin flip, and *below* the 58%/53% you would get by ignoring the
+diagnostic and always predicting that forecasting pays. Fifteen workloads below the cutoff
+paid anyway. The best cutoff achievable anywhere on this cohort is r >= 0.15 at 67%, which
+is barely above that same do-nothing baseline.
+
+## What survives
+
+**The diagnostic is specific to fleet-aggregate demand.** It was derived on Bitbrains,
+Materna and Azure LLM traces, every one of which sums thousands of VMs or requests. Those
+aggregates are smooth, and daily structure is the dominant exploitable signal in them. An
+individual serverless function is spiky and low-volume: it can carry high daily
+autocorrelation while the variance that actually drives a commitment decision lives inside
+the window, where a day-lagged correlation cannot see it.
+
+What transfers is only the bottom of the range: **very low daily autocorrelation (below
+~0.20) does predict that forecasting will not pay**, on both populations. Above that, on
+serverless traces, the number carries little information.
+
+Two candidate mechanisms, neither tested: within-window variance is the quantity that
+matters and daily autocorrelation is a poor proxy for it on spiky demand; or integer replica
+granularity dominates on low-volume functions, so both controllers round to the same
+capacity regardless of what either predicts. Distinguishing them is the obvious next
+experiment and is not claimed here.
+
+## Added to the negatives ledger
+
+- **The 0.50 threshold does not generalise beyond the fleet-aggregate traces it was derived
+  from.** On individual Azure Functions workloads it is a coin flip, and worse than ignoring
+  it entirely.
+- **The relationship is non-monotone on serverless demand** — the top of the range behaves
+  like the bottom, which no version of the rule predicted.
+- **The win metric was measuring the wrong thing.** Pareto dominance asks whether forecasting
+  is free; the newsvendor objective asks whether it pays. Only the second is the project's
+  actual claim.
