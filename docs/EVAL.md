@@ -414,8 +414,16 @@ Putting every family on one frontier, with the incumbent given its own tuning di
 | `conv` | 600 s | 1 | **no** |
 | `conv` | 1200 s | 0 | **no** |
 
-**0 of 8.** And the gap *widens* with cold start — 11.5% → 15.8% → 27.2% → 24.1% more
-expensive at a matched ≤5% violation rate — the opposite of the registered prediction.
+**0 of 8.** And the gap *widens* with cold start — on `conv`, 12.0% → 17.5% → 18.8% → 23.7%
+more expensive at a matched ≤5% violation rate — the opposite of the registered prediction.
+On `code` the gap is far larger still: 68.0% at 60 s and 62.5% at 240 s.
+
+> **Re-verified after the actuation-delay fix (2026-08-08).** Every controller in this
+> experiment re-plans at every step, so all of them were affected by the bug and this table
+> had to be re-measured. The verdict is unchanged at **0 of 8** — the counts of forecast
+> points in the usable region moved only from 0 to 1 in two cells — and the widening gap is
+> now cleanly *monotone*, where the original numbers turned over at the last step
+> (27.2% → 24.1%). The project's central negative result is robust to the bug.
 
 A methodological note on the verdict metric: counting raw Pareto points initially reported
 "YES" in every setting, because a controller that is very cheap and very unsafe is
@@ -735,12 +743,22 @@ workloads, *no* forecaster won a single cell at six hours. Fifty-six cells, zero
 earlier conclusion that "forecasting does not pay here" survives replacing the crude model
 with better ones.
 
-**3. LightGBM — the most sophisticated model available — never won a single cell**, at
-either window, on any workload. This is consistent with its known limitation, recorded
+**3. LightGBM — the most sophisticated model in this repository — never won a single cell**,
+at either window, on any workload. This is consistent with its known limitation, recorded
 earlier in this document: it is a recursive one-step quantile model whose bands do not widen
 with horizon (p99−p50 measured at 31.95 at step 1 versus 30.12 at step 48). Asked for a
-median path across a 6–12 hour window, it has nothing useful to say. **Sophistication is not
-the axis that matters here; matching the model to the horizon is.**
+median path across a 6–12 hour window, it has nothing useful to say. **Matching the model to
+the horizon mattered more than model capacity did here.**
+
+**Stated carefully, because the literature disagrees with the loose version.** Pre-training
+does improve cloud-workload forecast *accuracy* — the CloudOps benchmark reports a 27% error
+reduction over classical and deep baselines — so "sophistication does not help" would be
+wrong. The claim supported here is narrower and is about the *decision*: a more accurate
+forecaster did not produce better capacity decisions at these commitment horizons, which is
+what the decision-focused learning literature predicts. Two scope limits apply. LightGBM is
+the strongest model *available in this repo*, not in the field; and M17's foundation models
+were cut, so Chronos-Bolt and TimesFM remain untested. The question of whether a genuinely
+strong forecaster changes the commitment answer is **open, not settled**.
 
 ## The threshold is a rule of thumb, and it has an exception
 
@@ -1017,3 +1035,88 @@ experiment and is not claimed here.
 - **The win metric was measuring the wrong thing.** Pareto dominance asks whether forecasting
   is free; the newsvendor objective asks whether it pays. Only the second is the project's
   actual claim.
+
+---
+
+# Do these conclusions agree with anyone else? (2026-08-08)
+
+A finding nobody else has ever seen is usually an instrument artefact. This section checks
+each headline claim against published work, and records the places where the literature
+disagrees or where DELPHI turns out to be re-deriving something with an established name.
+
+## Where the literature agrees
+
+**The newsvendor identity is textbook, and cloud provisioning is a named application of
+it.** `CR = C_u/(C_u + C_o)` is the standard critical ratio; DELPHI's contribution is not
+the identity but insisting that an autoscaler pinned at P95 is *asserting* `C_u/C_o = 19`
+whether or not anyone decided that. Prior art on the non-stationary case with predictions
+exists (arXiv 2305.07993) and is closer to this project than anything cited in `RESEARCH.md`.
+
+**The percentile recommender is a genuinely strong incumbent, not a strawman.** Google's
+Autopilot reports autopiloted jobs running at 23% slack versus 46% for hand-managed ones,
+and a 10x reduction in jobs severely affected by OOMs. Choosing it rather than threshold HPA
+as the baseline to beat is the right call, and it is why DELPHI's negative result is
+interesting: most published proactive-autoscaling wins are measured against threshold HPA,
+where 2–4x violation reductions are routine and where DELPHI also wins.
+
+**Token work, not request rate, is the right signal for LLM serving.** Current practitioner
+guidance says explicitly that CPU and memory are poor proxies for LLM load, that queue depth
+and token counts are the signals to scale on, and that prefill and decode have different
+costs. M16 measures what that guidance asserts.
+
+**Cold start is the mechanism.** The standard account — an HPA polling every 15–30 s plus
+30–90 s of provisioning means a two-minute spike is missed entirely — is the same mechanism
+DELPHI's actuation-delay parameter models, and the same reason the margin depends on it.
+
+## Where DELPHI is re-deriving something with a name
+
+**The core thesis is decision-focused learning, and the project did not know it.** The claim
+that forecast accuracy is the wrong objective because a capacity controller consumes a
+*decision*, not a point estimate, is the founding premise of the predict-then-optimize /
+decision-focused learning literature, whose position is that improved predictive accuracy
+does not in general translate into improved decision quality — established both empirically
+and theoretically. `RESEARCH.md` reached this independently via the calibration route and
+cites neither term.
+
+This is a credibility issue rather than a correctness one: the finding is sound and the
+framing is standard, but presenting it as novel would misread the field. It should be cited
+as what it is — a decision-focused evaluation of capacity control, applied to a domain where
+the operations-research framing is not yet common.
+
+**"Is this forecastable at all" is an existing research question with a better answer than
+ours.** Spectral entropy is the established forecastability measure, and recent work
+proposes spectral predictability specifically as a fast, training-free indicator of whether
+forecasting will beat simple baselines — the same job as our diagnostic, computed better.
+The literature's reason for preferring it is precisely the failure Q13 measured: a single
+lagged correlation looks at one lag, while spectral measures capture structure across all
+frequencies at once. **Our Q13 negative is what this literature predicts should happen.**
+That is corroboration of the method and a clear signposted improvement: the diagnostic
+should be spectral entropy, or autocorrelation plus spectral entropy, not a single lag.
+
+Notably, BACC — the closest prior art — already orders its five Azure Functions traces by
+autocorrelation *and spectral entropy* together, which is a hint this project should have
+taken earlier.
+
+## Where the literature disagrees, and what survives
+
+**Pre-trained models do beat classical baselines on cloud-workload forecast accuracy.** The
+CloudOps pre-training benchmark reports a 27% error reduction over classical and deep
+baselines on its largest dataset. DELPHI's observation that LightGBM never won a commitment
+cell must therefore not be read as "sophistication does not help forecasting" — it does.
+
+The defensible claim is narrower and is the one this document should make: *a more accurate
+forecaster did not produce better capacity decisions at these commitment horizons*, which is
+exactly what decision-focused learning predicts and is a statement about the decision, not
+about the model. It is also weakened by scope: LightGBM is the most sophisticated model *in
+this repository*, not in the field. M17's foundation models were cut, so the strongest
+available forecasters remain untested here, and the honest position is that the question is
+open rather than answered.
+
+## Net assessment
+
+Six of the project's claims are corroborated by independent work, one is a re-derivation of
+an established framework that should be cited rather than presented as new, and one — the
+LightGBM result — needs narrowing to a statement about decisions rather than about models.
+No claim was contradicted outright. The Q13 negative result is independently predicted by
+the forecastability literature, which is the strongest single piece of evidence that the
+measurement apparatus here is working correctly.
