@@ -151,6 +151,12 @@ the published control laws, not to the production systems — the same caveat BA
 
 ### Q1 — Does forecasting beat reaction, and does the margin grow with lead time?
 
+> ⚠️ **SUPERSEDED — the table below was produced by a simulator with an actuation-delay bug
+> and every number in it is wrong.** The corrected measurement, and the reason the original
+> conclusion inverted, are in
+> [Correction: the actuation-delay bug (2026-08-08)](#correction-the-actuation-delay-bug-and-what-it-changed-2026-08-08).
+> Retained so the correction can be checked against what it replaced.
+
 **Partially confirmed, and the qualifier matters.**
 
 | startup (steps) | reactive viol. | proactive viol. | margin | relative reduction |
@@ -319,6 +325,11 @@ on GPU work). On a bursty trace the forecast error dominates the signal error, s
 not a universal win and should not be reported as one.
 
 ## Q1 revisited — cold start is the mechanism
+
+> ⚠️ **SUPERSEDED — both tables in this section predate the actuation-delay fix.** The `code`
+> result in particular *inverted*: forecasting does help there, and the margin grows
+> monotonically with cold start. See
+> [Correction: the actuation-delay bug (2026-08-08)](#correction-the-actuation-delay-bug-and-what-it-changed-2026-08-08).
 
 The synthetic result for Q1 was non-monotone and saturated. On real inference demand it
 separates cleanly, and the two traces disagree in an informative way.
@@ -747,3 +758,176 @@ away.**
 So the honest statement is: daily autocorrelation **orders** these workloads well and
 predicts the extremes reliably, but it is not a calibrated boundary and a value near 0.45–0.50
 does not settle the question. The dashboard says as much, and Q13 remains **open**.
+
+---
+
+# Correction: the actuation-delay bug, and what it changed (2026-08-08)
+
+An audit of the M4–M23 code — the same treatment the M0–M3 audit got on 2026-08-03 — found a
+bug in `apply_actuation_delay` that invalidated **every autoscaling-regime number in this
+document**. It is written up here in full because it changed two headline answers, and
+because the way it hid is more instructive than the bug itself.
+
+## The bug
+
+A controller's request is turned into serving capacity by `apply_actuation_delay`. When a
+new request arrived while a change was still in flight, the code retargeted the change *and
+restarted its clock*. So a request that kept moving never landed at all:
+
+```
+requested   1  2  3  4  5  6  7  8  9 10 11 12      (startup = 3 steps)
+provisioned 1  1  1  1  1  1  1  1  1  1  1  1      ← before the fix
+provisioned 1  1  1  1  5  5  5  5  9  9  9  9      ← after
+```
+
+A monotone ramp provisioned nothing, forever. Real reconciliation loops do not work this
+way: pods already starting do not begin again because the desired count moved. The fix keeps
+the supersede semantics the docstring describes — act on current desired state, not a
+backlog — while preserving the in-flight change's original landing step.
+
+## What it did *not* touch — the headline result is unaffected
+
+The bug only bites when a request keeps moving while a change is in flight. Commitment
+controllers hold capacity constant for a whole 6- or 12-hour window, so their plans change
+once per window and then sit still — which both implementations handle identically.
+
+This was verified rather than assumed: 400 commitment-shaped plans (both window lengths,
+random levels, the deploy profile's 240 s startup) produce **byte-identical provisioned
+capacity** under the buggy and the fixed model. Zero differences.
+
+So the following are untouched, and every number in them stands:
+
+- the commitment-regime result — forecasting wins on `azure-llm-code`;
+- the 7 workloads x 4 forecasters x 4 quantiles study, including 27-of-28 and 26-of-28;
+- the `materna-2` exception and the open Q13.
+
+What *was* invalidated is the autoscaling regime, where controllers re-plan every step: the
+Q1 lead-time sweep, the M8 frontier tables, and the GPU cold-start sweeps. Those were re-run
+and are reported above.
+
+## Why the gate could not see it
+
+Every one of the four M4 validation checks passed before and after.
+
+- **Erlang-C, degenerate, determinism** never exercise a *changing* request. They use
+  constant or single-step plans, which the bug handled correctly.
+- **The sensitivity sweep** checks that the *ranking* of controllers survives perturbation.
+  The bug moved every controller the same way, so the ranking was stable and the check
+  passed — while every absolute number underneath it was wrong.
+- **The unit suite** had a test named `test_a_later_request_supersedes_one_still_in_flight`
+  that asserted the superseding behaviour on a plan that stops changing after two steps. It
+  passed under both implementations. All 178 tests passed before the fix, and all 178 still
+  pass after it.
+
+This is the 2026-08-03 lesson again, sharper: **a green gate is evidence that the checks
+ran, not that the code is right.** The check that would have caught this — "a rising request
+must eventually provision" — is a two-line property nobody had written, and it is now
+`test_a_continuously_changing_request_still_lands`.
+
+## What it changed — Q1 is refuted, and replaced by something better
+
+The pre-registered Q1 prediction was that the proactive margin *grows* with actuation lead.
+Corrected, on synthetic `clean_daily`:
+
+| startup (steps) | % of season | reactive viol. | proactive viol. | margin |
+|---:|---:|---:|---:|---:|
+| 0 | 0.0% | 0.197 | 0.008 | +0.188 |
+| 1 | 4.2% | 0.313 | 0.027 | +0.287 |
+| 2 | 8.3% | 0.362 | 0.068 | **+0.293** |
+| 3 | 12.5% | 0.392 | 0.140 | +0.252 |
+| 4 | 16.7% | 0.407 | 0.235 | +0.172 |
+| 6 | 25.0% | 0.448 | 0.365 | +0.083 |
+| 8 | 33.3% | 0.433 | 0.397 | +0.037 |
+| 10 | 41.7% | 0.457 | 0.447 | +0.010 |
+| 12 | 50.0% | 0.537 | 0.505 | +0.032 |
+| 16 | 66.7% | 0.692 | 0.585 | +0.107 |
+| 20 | 83.3% | 0.790 | 0.633 | +0.157 |
+| 24 | 100.0% | 0.408 | 0.340 | +0.068 |
+
+**Q1 as registered is refuted.** The margin does not grow with lead time. But it is not
+noise either — it has a clear shape, and the shape is the real answer:
+
+> **The proactive margin is governed by where the actuation lead falls in the seasonal
+> cycle, not by lead time as such.** It peaks at +0.293 around 8% of a cycle, collapses to
+> +0.010 near half a cycle — the worst possible phase, where you are predicting the opposite
+> part of the day — and recovers toward a full cycle, where a seasonal-naive forecaster
+> realigns with the season it was built on.
+
+Forecasting beat reaction at *every* lead tested; only the size of the advantage moved.
+
+**This resolves a disagreement rather than creating one.** The GPU lane's cold starts (up to
+1200 s) are at most 1.4% of a daily cycle — entirely on the rising limb — which is why that
+lane sees the margin grow monotonically while the synthetic sweep sees it fall. Both are the
+same curve sampled in different places.
+
+Robustness: the reversal is not an artefact of one modelling choice. An independent pure
+pipeline model (each request lands `lag` steps later, never cancelled) gives +0.190 → +0.053
+against the fix's +0.190 → +0.038, agreeing closely at every lead; only the buggy model
+produced a growing margin. Refit cadence was also swept (every 1, 6 and 24 steps) and makes
+no material difference here, so the stale-forecast mechanism recorded in the GPU lane is not
+what drives this.
+
+## What it changed — the GPU `code` negative inverted
+
+The recorded finding was *"burstiness defeats forecast-driven capacity control regardless of
+actuation delay"*. Corrected:
+
+| startup | reactive viol. | proactive viol. | margin | relative |
+|---:|---:|---:|---:|---:|
+| 0 s | 0.0899 | 0.1198 | −0.0299 | −33.2% |
+| 60 s | 0.1082 | 0.1260 | −0.0179 | −16.5% |
+| 240 s | 0.1477 | 0.1283 | **+0.0194** | 13.2% |
+| 600 s | 0.1946 | 0.1299 | **+0.0648** | 33.3% |
+| 1200 s | 0.2391 | 0.1356 | **+0.1035** | 43.3% |
+
+Forecasting *does* help on `code` once the cold start exceeds roughly four minutes, and the
+margin grows monotonically from there. **The claim that burstiness defeats forecasting
+regardless of delay was an artefact of the bug and is withdrawn.** What survives is the
+weaker and still useful statement: burstiness raises the cold-start threshold at which
+forecasting starts paying — on `code` that threshold is ~240 s, while `conv` benefits at
+every lead tested.
+
+## What it changed — a caveat that turned out to be an artefact
+
+The M4 gate carried a standing *saturation warning*: past ~2 steps of lead the reactive
+baseline exceeded 50% violations, so "both controllers mostly fail" and only rankings were
+trustworthy. Corrected, reactive plateaus at ~0.43 and the warning no longer fires. **The
+saturated regime did not exist** — it was the bug preventing reactive from ever scaling up.
+The corresponding L5 Trap 3 note is withdrawn for this sweep.
+
+## A gate that asserted its own hypothesis
+
+Check 4a required the margin to grow with lead, with the stated rationale that a margin
+which fails to grow means "the simulator's actuation delay is not doing its job". That
+inference is invalid, and it made the gate unfalsifiable in the wrong direction: a correct
+simulator plus a wrong hypothesis was indistinguishable from a broken simulator. Indeed the
+first run after fixing the bug reported **M4 gate: NOT GREEN** — the fix looked like a
+regression.
+
+Check 4a now gates on a genuine property of the simulator — *longer lag must never reduce
+violations for either controller*, which holds — and reports the Q1 margin as a measurement.
+Hypotheses are answered in this document, not enforced by the test suite.
+
+## Also corrected: the diagnostic overclaimed
+
+The shipped verdict string asserted that below the 0.50 threshold no forecaster beat a
+trailing percentile *"at any commitment length"*. The project's own table on 2026-08-07
+refutes this: `materna-2`, at r = 0.450, won 2 of 4 settings at a twelve-hour commitment.
+The `HowItWorks` view carried the same overclaim, written when the study covered three
+workloads and never updated when it grew to seven.
+
+`classify()` now returns an explicitly **borderline** verdict for readings in 0.40–0.55,
+naming the two traces that invert the ordering and telling the reader to measure rather than
+trust the threshold. `test_borderline_verdicts_disclose_the_measured_exception` pins it.
+
+## Added to the negatives ledger
+
+- **Q1 as pre-registered is refuted.** The proactive margin does not grow with actuation
+  lead; it peaks near 8% of a seasonal cycle and troughs near 50%.
+- **A documented negative — "burstiness defeats forecasting on `code`" — was a bug
+  artefact** and is withdrawn.
+- **A documented caveat — the "saturated regime" — was a bug artefact** and is withdrawn.
+- **A validation gate encoded a hypothesis as a pass condition**, so for five days a correct
+  simulator would have been reported as broken.
+- **The shipped diagnostic contradicted this document** for one day, in the direction that
+  flattered the rule.

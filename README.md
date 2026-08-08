@@ -1,27 +1,59 @@
 # DELPHI
 
-Calibrated time-series forecasting and auditable capacity control for cloud and AI-inference
-workloads.
+**Capacity planning that tells you whether prediction can help before it sells you a
+predictor — then sizes capacity from the price of failure rather than from convention.**
 
-DELPHI treats capacity as a newsvendor decision: the relative cost of idle capacity and unmet
-demand determines the demand quantile to provision. Forecasts therefore expose calibrated
-quantiles—not a single point—and every later capacity decision records the evidence and
-assumptions that produced it.
+DELPHI set out to show that a calibrated forecast beats conventional autoscaling. Measured
+against the recommender Kubernetes actually ships, it mostly does not. The useful result is
+the boundary: forecasting pays when capacity is committed for hours at a time *and* demand
+has real daily structure, and a single number you can compute in seconds tells you which
+side of that boundary you are on.
 
-The tested M0 system spine, M1 demand layer, M2 forecast baselines, and M3 calibration layer are
-complete. A validated, immutable `DemandSeries` unifies deterministic labelled regimes and the real Azure Functions 2019 wide
-trace, with explicit missing-point quality, reproducible cohort selection, checksum-verified
-fetching, and idempotent persistence. Forecasts are quantile-only and evaluated with chronological
-rolling origins, MASE, WQL, empirical coverage, and a deliberate leakage test. Split conformal,
-CQR, and ACI calibration retain realized coverage as a time series. Replay control and specialist
-arbitration land as separately tested milestones; status is in
-[docs/ROADMAP.md](docs/ROADMAP.md).
+## The three findings
+
+1. **In the autoscaling regime, forecasting loses to a trailing percentile.** Demand is
+   ~0.98 autocorrelated at one minute on every workload measured here, so recent load
+   already carries nearly all the signal. An explicit model mostly adds its own error.
+2. **In the commitment regime it wins.** When capacity is fixed for six or twelve hours —
+   reserved instances, cluster sizing, procurement — reaction is structurally unavailable
+   and a forecast that covers the coming peak is worth having. On the one workload with
+   strong daily structure, forecasting cut violations *while costing less*.
+3. **Daily autocorrelation predicts which regime you are in.** Across 7 workloads x 4
+   forecasters x 4 quantiles it calls 27 of 28 outcomes correctly at a six-hour commitment.
+   It is a rule of thumb, not a calibrated boundary — the known exception runs against the
+   rule, and readings near 0.45–0.50 do not settle the question.
+
+Capacity itself is sized as a newsvendor decision: the cost of unmet demand and the cost of
+idle capacity set the demand quantile to buy, `q* = C_u / (C_u + C_o)`. Every fixed-target
+autoscaler is asserting a cost ratio it never states; a controller pinned at p95 is claiming
+that a unit of unmet demand costs 19x a unit of idle capacity. DELPHI states it.
+
+## What is in here
+
+- A **replay simulator** with an explicit actuation delay, validated against the Erlang-C
+  closed form to within 2.2% and gated before any result is published.
+- **Baseline controllers** — static, reactive HPA, the VPA/Autopilot percentile
+  recommender, proactive quantile, budget-paced PI — tuned on an equal budget.
+- **Calibrated quantile forecasting**: split conformal, CQR and adaptive conformal
+  inference, with coverage measured as a time series rather than assumed.
+- A **GPU inference lane** on Azure's CC-BY request-level traces, where prefill and decode
+  contend for one device and the capacity currency is GPU-seconds, not CPU.
+- A **read-only API and dashboard** serving a snapshot baked at image build.
+
+## Read the evaluation
+
+[`docs/EVAL.md`](docs/EVAL.md) is the real artifact. It carries the Pareto frontiers, the
+tuning-parity protocol, sample sizes, the open-loop caveat, the pre-registered questions
+answered whichever way they fell, and a negatives ledger — including a simulator bug that
+reversed one of the headline answers after it was found.
 
 ## Principles
 
 - Free and licence-clean by default; no paid key or hosted model is required.
 - Quantile calibration is measured on held-out time before a forecast may drive capacity.
-- Controller comparisons state the open-loop replay assumption and report Pareto frontiers.
+- Controller comparisons state the open-loop replay assumption and report Pareto frontiers,
+  never a single flattering number.
+- An implausibly clean number is an instrument artefact until proven otherwise.
 - DELPHI recommends plans for human review; it never applies changes to a real cluster.
 
 ## Development
@@ -31,8 +63,15 @@ make env
 conda activate delphi
 make install
 make check
-make fetch-azure    # 136 MB CC-BY trace, checksum-verified into ignored data/
-make ingest-azure   # seeded top-volume + decile-stratified cohort into Postgres
+```
+
+Then, to reproduce the data lane and the results:
+
+```bash
+make fetch-azure          # 136 MB CC-BY trace, checksum-verified into ignored data/
+make ingest-azure         # seeded top-volume + decile-stratified cohort into Postgres
+make validate-simulator   # the M4 gate — must be GREEN before trusting any result
+make evaluate-commitment  # the headline experiment
 ```
 
 Postgres uses host port `5436`, keeping it separate from the sibling portfolio services:
@@ -42,24 +81,28 @@ make up
 make down
 ```
 
-## Current architecture
+## Architecture
 
 ```text
 public trace / synthetic demand
               │
        canonical DemandSeries
               │
-      calibrated quantiles       (next milestones)
+   predictability diagnostic  ──→  "is a forecaster worth building here?"
               │
- newsvendor capacity controller  (planned)
+      calibrated quantiles
               │
- specialist proposals + ledger   (planned)
+  newsvendor sizing  ×  commitment or autoscaling regime
               │
-        human-reviewed plan
+     replay simulator (validated)
+              │
+   cost-vs-violation frontier  →  human-reviewed plan
 ```
 
 ## Responsible scope
 
-DELPHI is a replay and decision-support system. It does not control Kubernetes, cloud accounts,
-or production infrastructure. Simulated savings are directional under an explicit open-loop
-assumption; they are never presented as measured production savings.
+DELPHI is a replay and decision-support system. It does not control Kubernetes, cloud
+accounts, or production infrastructure. Simulated savings are directional under an explicit
+open-loop assumption; they are never presented as measured production savings. Retail list
+prices are not what an enterprise pays — the shape of a frontier is the result, not the
+absolute dollars.
