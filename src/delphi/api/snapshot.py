@@ -18,6 +18,11 @@ from pydantic import BaseModel, Field
 
 SnapshotMode = Literal["live", "demo", "replay"]
 
+#: How much weight the diagnostic itself can carry at a given reading. ``borderline`` is not
+#: a hedge — it is the range where the measured ordering demonstrably broke down, and
+#: collapsing it into the yes/no answer is how the shipped verdict came to overclaim.
+DiagnosticBand = Literal["strong", "borderline", "weak", "none"]
+
 
 class WorkloadSummary(BaseModel):
     """One workload, with the diagnostic that decides whether forecasting can help it."""
@@ -40,6 +45,8 @@ class WorkloadSummary(BaseModel):
     #: Whether the measured structure predicts that forecasting will pay at a long
     #: commitment. Derived from the threshold the evaluation established, not hand-set.
     forecastable: bool
+    #: How far this reading can be trusted. Read this before ``forecastable``.
+    band: DiagnosticBand = "weak"
     verdict: str
 
 
@@ -106,9 +113,19 @@ class Snapshot(BaseModel):
         return next((w for w in self.workloads if w.workload_id == workload_id), None)
 
 
-#: The threshold the evaluation established: below this, no forecaster beat a trailing
-#: window on any workload tested, at any commitment length.
+#: The threshold the evaluation established. It is a rule of thumb, not a calibrated
+#: boundary: across 7 workloads x 4 forecasters x 4 quantiles it calls 27 of 28 cells
+#: correctly at a six-hour commitment and 26 of 28 at twelve hours. The known exception runs
+#: *against* the rule — `materna-2`, at r = 0.450, won 2 of 4 cells at twelve hours while
+#: `materna-1` at r = 0.494 won none — so a value near 0.45-0.50 does not settle the
+#: question. See `docs/EVAL.md`; Q13 is open.
 FORECASTABLE_AUTOCORRELATION = 0.50
+
+#: Below this, the evaluation found no exceptions at all: no forecaster won a single cell.
+NO_STRUCTURE_AUTOCORRELATION = 0.30
+
+#: Width of the band around the threshold where the ordering was observed to break down.
+INDETERMINATE_BAND = (0.40, 0.55)
 
 STANDING_ASSUMPTIONS: list[str] = [
     "Open-loop assumption: replaying a trace against a different policy is a counterfactual, "
@@ -123,17 +140,43 @@ STANDING_ASSUMPTIONS: list[str] = [
 ]
 
 
+def classify_band(daily_autocorrelation: float) -> DiagnosticBand:
+    """Which evidential band a reading falls in. The single source of this threshold."""
+    low, high = INDETERMINATE_BAND
+    if low <= daily_autocorrelation <= high:
+        return "borderline"
+    if daily_autocorrelation > high:
+        return "strong"
+    if daily_autocorrelation >= NO_STRUCTURE_AUTOCORRELATION:
+        return "weak"
+    return "none"
+
+
 def classify(daily_autocorrelation: float) -> tuple[bool, str]:
-    """Turn the measured diagnostic into a plain-language verdict."""
-    if daily_autocorrelation >= FORECASTABLE_AUTOCORRELATION:
+    """Turn the measured diagnostic into a plain-language verdict.
+
+    The verdict states its own reliability. Near the threshold the measured ordering
+    genuinely broke down, and saying so is the point of shipping a diagnostic rather than
+    a number.
+    """
+    band = classify_band(daily_autocorrelation)
+    if band == "borderline":
+        return daily_autocorrelation >= FORECASTABLE_AUTOCORRELATION, (
+            "Borderline daily structure, and this is the range where the diagnostic is "
+            "least trustworthy. Two traces from the same provider inverted here: one at "
+            "0.450 beat a trailing percentile at a twelve-hour commitment while one at "
+            "0.494 did not. Treat this as 'measure it yourself', not as an answer."
+        )
+    if band == "strong":
         return True, (
             "Strong daily structure. Forecasting is expected to pay at commitment windows "
             "of roughly six hours or longer, where reaction is impossible."
         )
-    if daily_autocorrelation >= 0.30:
+    if band == "weak":
         return False, (
-            "Weak daily structure. No forecaster tested beat a trailing percentile at any "
-            "commitment length on workloads in this range."
+            "Weak daily structure. No forecaster tested beat a trailing percentile here at "
+            "a six-hour commitment; the one exception measured, at twelve hours, sat higher "
+            "in the borderline band."
         )
     return False, (
         "Effectively no daily structure. A trailing percentile — or at long horizons a flat "

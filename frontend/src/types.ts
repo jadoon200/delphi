@@ -14,8 +14,11 @@ export interface WorkloadSummary {
   peak_to_mean: number;
   mean_demand: number;
   forecastable: boolean;
+  band: DiagnosticBand;
   verdict: string;
 }
+
+export type DiagnosticBand = 'strong' | 'borderline' | 'weak' | 'none';
 
 export interface HorizonRow {
   horizon_label: string;
@@ -69,6 +72,7 @@ export interface DiagnosticResult {
   weekly_autocorrelation: number | null;
   peak_to_mean: number;
   forecastable: boolean;
+  band: DiagnosticBand;
   verdict: string;
   q_star: number;
   demand_at_q_star: number;

@@ -24,6 +24,7 @@ from delphi.api.snapshot import (
     Snapshot,
     WorkloadSummary,
     classify,
+    classify_band,
 )
 from delphi.control.serving import ServingProfile, gpu_seconds_demand
 from delphi.data.bitbrains import load_fleet as bitbrains_fleet
@@ -56,6 +57,7 @@ def summarise(
     per_day = max(round(86400 / series.step_seconds), 1)
     daily = _autocorrelation(series.values, per_day) or 0.0
     forecastable, verdict = classify(daily)
+    band = classify_band(daily)
     return WorkloadSummary(
         workload_id=workload_id,
         label=label,
@@ -72,6 +74,7 @@ def summarise(
         peak_to_mean=float(np.quantile(series.values, 0.95) / series.values.mean()),
         mean_demand=float(series.values.mean()),
         forecastable=forecastable,
+        band=band,
         verdict=verdict,
     )
 

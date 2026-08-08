@@ -1,6 +1,7 @@
 """Read-only API: contract, honesty fields, and the diagnostic endpoint."""
 
 import json
+import math
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -16,6 +17,7 @@ from delphi.api.snapshot import (
     Snapshot,
     WorkloadSummary,
     classify,
+    classify_band,
 )
 
 
@@ -177,6 +179,40 @@ def test_classification_threshold_is_the_one_the_evaluation_established() -> Non
     high, _ = classify(FORECASTABLE_AUTOCORRELATION + 0.01)
     low, _ = classify(FORECASTABLE_AUTOCORRELATION - 0.01)
     assert high and not low
+
+
+def test_borderline_verdicts_disclose_the_measured_exception() -> None:
+    """The shipped verdict must not claim more than `docs/EVAL.md` supports.
+
+    `materna-2` sat at r = 0.450 — below the cutoff — and still won 2 of 4 settings at a
+    twelve-hour commitment, while `materna-1` at 0.494 won none. An earlier verdict string
+    asserted that nothing below the threshold ever won "at any commitment length", which
+    the project's own table refutes.
+    """
+    for value in (0.450, 0.494):
+        _, verdict = classify(value)
+        assert "borderline" in verdict.lower()
+        assert "0.450" in verdict and "0.494" in verdict
+
+    _, confident = classify(0.73)
+    assert "borderline" not in confident.lower()
+
+    for value in (0.10, 0.35):
+        _, verdict = classify(value)
+        assert "at any commitment length" not in verdict
+
+
+def test_band_is_the_single_source_of_the_threshold(client: TestClient) -> None:
+    """The UI must not re-derive the cutoff; it renders whatever band the API reports."""
+    assert classify_band(0.73) == "strong"
+    assert classify_band(0.470) == "borderline"
+    assert classify_band(0.35) == "weak"
+    assert classify_band(0.10) == "none"
+
+    values = [60 + 25 * math.sin(i / 45.8) for i in range(2000)]
+    body = client.post("/diagnostic/score", json={"values": values, "step_seconds": 300}).json()
+    assert body["band"] == classify_band(body["daily_autocorrelation"])
+    assert (body["band"] == "strong") == body["forecastable"]
 
 
 def test_evidence_export_is_argus_shaped(client: TestClient) -> None:

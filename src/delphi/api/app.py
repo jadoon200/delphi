@@ -25,8 +25,10 @@ from pydantic import BaseModel, Field
 from delphi.api.snapshot import (
     DemandPoint,
     DemandSeriesPayload,
+    DiagnosticBand,
     Snapshot,
     classify,
+    classify_band,
 )
 from delphi.config import get_settings
 from delphi.control.newsvendor import CostRatio
@@ -164,6 +166,7 @@ class DiagnosticResponse(BaseModel):
     weekly_autocorrelation: float | None
     peak_to_mean: float
     forecastable: bool
+    band: DiagnosticBand
     verdict: str
     q_star: float
     demand_at_q_star: float
@@ -209,8 +212,10 @@ def score(request: Annotated[DiagnosticRequest, Body()]) -> DiagnosticResponse:
             "could not be computed — the forecastability verdict is unavailable, not negative."
         )
         forecastable, verdict = False, "Insufficient history to judge."
+        band: DiagnosticBand = "none"
     else:
         forecastable, verdict = classify(daily)
+        band = classify_band(daily)
     if len(values) <= 7 * per_day + 8:
         notes.append(
             "Series is shorter than two weeks, so weekly structure is untestable — this is "
@@ -230,6 +235,7 @@ def score(request: Annotated[DiagnosticRequest, Body()]) -> DiagnosticResponse:
         weekly_autocorrelation=autocorrelation(7 * per_day),
         peak_to_mean=float(np.quantile(values, 0.95) / values.mean()),
         forecastable=forecastable,
+        band=band,
         verdict=verdict,
         q_star=q_star,
         demand_at_q_star=demand_at_q,
@@ -256,6 +262,7 @@ def evidence(limit: Annotated[int, Query(ge=1, le=200)] = 50) -> dict[str, objec
                 "workload_id": w.workload_id,
                 "daily_autocorrelation": w.daily_autocorrelation,
                 "forecastable": w.forecastable,
+                "band": w.band,
                 "peak_to_mean": w.peak_to_mean,
                 "licence": w.licence,
             },

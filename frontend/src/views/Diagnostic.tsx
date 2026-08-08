@@ -1,6 +1,34 @@
 import { useMemo, useState } from 'react';
 import { scoreDiagnostic } from '../api';
-import type { DiagnosticResult, WorkloadSummary } from '../types';
+import type { DiagnosticBand, DiagnosticResult, WorkloadSummary } from '../types';
+
+/** The diagnostic reports three answers, not two.
+ *
+ * `borderline` is the range where the measured ordering actually broke down — two traces
+ * from the same provider inverted across it. Rendering that as a confident red "will not
+ * pay" was an overclaim the evaluation itself refutes, so the band is carried from the API
+ * rather than re-derived here: one threshold, defined once, in Python.
+ */
+const BAND_STYLE: Record<DiagnosticBand, string> = {
+  strong: 'good',
+  borderline: 'warn',
+  weak: 'bad',
+  none: 'bad',
+};
+
+const BAND_LABEL: Record<DiagnosticBand, string> = {
+  strong: 'forecasting should pay',
+  borderline: 'too close to call — measure it',
+  weak: 'forecasting will not pay',
+  none: 'forecasting will not pay',
+};
+
+const BAND_SHORT: Record<DiagnosticBand, string> = {
+  strong: 'forecastable',
+  borderline: 'borderline',
+  weak: 'not forecastable',
+  none: 'not forecastable',
+};
 
 /** Demand shapes a visitor can try without pasting anything.
  *
@@ -223,8 +251,8 @@ export default function Diagnostic({
           <>
             <h3>Verdict</h3>
             <p>
-              <span className={`badge ${result.forecastable ? 'good' : 'bad'}`}>
-                {result.forecastable ? 'forecasting should pay' : 'forecasting will not pay'}
+              <span className={`badge ${BAND_STYLE[result.band]}`}>
+                {BAND_LABEL[result.band]}
               </span>{' '}
               {result.verdict}
             </p>
@@ -303,8 +331,8 @@ export default function Diagnostic({
                   <td className="num">{w.daily_autocorrelation.toFixed(3)}</td>
                   <td className="num">{w.peak_to_mean.toFixed(2)}</td>
                   <td>
-                    <span className={`badge ${w.forecastable ? 'good' : 'bad'}`}>
-                      {w.forecastable ? 'forecastable' : 'not forecastable'}
+                    <span className={`badge ${BAND_STYLE[w.band]}`}>
+                      {BAND_SHORT[w.band]}
                     </span>
                   </td>
                 </tr>

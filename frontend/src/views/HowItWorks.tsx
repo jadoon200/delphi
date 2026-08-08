@@ -89,9 +89,19 @@ export default function HowItWorks() {
         </div>
         <p className="sub" style={{ marginTop: 14 }}>
           At a 12-hour commitment on the one workload with strong daily structure, forecasting
-          halved the violation rate <em>while costing less</em>. On the two workloads with weak
-          structure it never won, at any commitment length.
+          halved the violation rate <em>while costing less</em>. Across seven workloads and four
+          forecasters, daily autocorrelation called 27 of 28 outcomes correctly at six hours and
+          26 of 28 at twelve.
         </p>
+        <div className="callout limits" style={{ marginTop: 14 }}>
+          <strong>The threshold is a rule of thumb, and it has a known exception.</strong> Two
+          traces from the same provider invert the ordering: <code>materna-2</code> at r = 0.450,
+          below the 0.50 cutoff, won 2 of 4 settings at a twelve-hour commitment, while{' '}
+          <code>materna-1</code> at r = 0.494, above it, won none. Either the Christmas level
+          shift in <code>materna-2</code> is genuinely exploitable, or 2 of 4 is noise — we have
+          not established which. A reading between roughly 0.40 and 0.55 does not settle the
+          question, and the diagnostic says so rather than rounding to a verdict.
+        </div>
       </section>
 
       <section className="panel">
