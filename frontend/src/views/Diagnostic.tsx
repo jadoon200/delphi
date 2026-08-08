@@ -181,11 +181,19 @@ export default function Diagnostic({
       <section className="panel">
         <h2>Before you build a predictive autoscaler, find out if prediction can help</h2>
         <p className="sub">
-          Across <strong>seven real workloads from three providers</strong>, a single measured
-          number — the autocorrelation of demand at a one-day lag — predicted whether forecasting
-          would beat the trailing-percentile recommender that Kubernetes already ships. It costs
-          seconds to compute. Building the forecaster costs weeks.
+          Across <strong>seven fleet-aggregate workloads from three providers</strong>, a single
+          measured number — the autocorrelation of demand at a one-day lag — predicted whether
+          forecasting would beat the trailing-percentile recommender that Kubernetes already
+          ships. It costs seconds to compute. Building the forecaster costs weeks.
         </p>
+        <div className="callout limits">
+          <strong>Scope, established by trying to break it.</strong> Tested against 43 individual
+          Azure Functions workloads, this cutoff is a coin flip — 51% at a six-hour commitment,
+          worse than ignoring it — and the relationship is not monotone. It holds on{' '}
+          <em>aggregated</em> demand: a fleet, a cluster, a whole service. On a single spiky
+          workload only the bottom of the range transfers, where a reading below ~0.20 predicted
+          that forecasting would not pay on every population tested.
+        </div>
 
         <div className="grid two">
           <div>

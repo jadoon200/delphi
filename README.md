@@ -18,10 +18,14 @@ side of that boundary you are on.
    reserved instances, cluster sizing, procurement — reaction is structurally unavailable
    and a forecast that covers the coming peak is worth having. On the one workload with
    strong daily structure, forecasting cut violations *while costing less*.
-3. **Daily autocorrelation predicts which regime you are in.** Across 7 workloads x 4
-   forecasters x 4 quantiles it calls 27 of 28 outcomes correctly at a six-hour commitment.
-   It is a rule of thumb, not a calibrated boundary — the known exception runs against the
-   rule, and readings near 0.45–0.50 do not settle the question.
+3. **Daily autocorrelation predicts which regime you are in — on aggregated demand.** Across
+   7 fleet-aggregate workloads x 4 forecasters x 4 quantiles it calls 27 of 28 outcomes
+   correctly at a six-hour commitment.
+4. **And it does not generalise past that, which we went looking for and found.** On 43
+   individual Azure Functions workloads the same cutoff is a coin flip — 51% at six hours,
+   worse than ignoring it — and the relationship is not even monotone. What transfers is
+   only the bottom of the range: below ~0.20, forecasting failed to pay on every population
+   tested. The diagnostic is scoped to aggregates and says so on its own results page.
 
 Capacity itself is sized as a newsvendor decision: the cost of unmet demand and the cost of
 idle capacity set the demand quantile to buy, `q* = C_u / (C_u + C_o)`. Every fixed-target
