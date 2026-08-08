@@ -13,6 +13,7 @@ Two rules from the evaluation doctrine are implemented here rather than left to 
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from itertools import pairwise
 
 import numpy as np
 import numpy.typing as npt
@@ -137,7 +138,7 @@ def dominated_hypervolume(
     if not front:
         return 0.0
     area = 0.0
-    for current, following in zip(front, front[1:], strict=False):
+    for current, following in pairwise(front):
         area += (following.cost - current.cost) * (violation_reference - current.violation_rate)
     last = front[-1]
     area += (cost_reference - last.cost) * (violation_reference - last.violation_rate)
