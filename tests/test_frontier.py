@@ -96,6 +96,50 @@ def test_hypervolume_of_an_empty_frontier_is_zero() -> None:
     assert dominated_hypervolume([], cost_reference=10.0) == 0.0
 
 
+def test_hypervolume_matches_the_area_computed_by_hand() -> None:
+    """A relative check passes even when the area is double what it should be.
+
+    One point at cost 5 with a 0.2 violation rate, against a reference corner at cost 10,
+    dominates exactly the rectangle from cost 5 to 10 and violation 0.2 to 1.0 — an area of
+    5 x 0.8 = 4.0. The previous implementation swept from cost zero, where nothing is
+    affordable, and returned 8.0.
+    """
+    assert dominated_hypervolume([_point(5.0, 0.2)], cost_reference=10.0) == pytest.approx(4.0)
+
+    staircase = [_point(2.0, 0.5), _point(5.0, 0.2), _point(8.0, 0.1)]
+    expected = (5 - 2) * (1 - 0.5) + (8 - 5) * (1 - 0.2) + (10 - 8) * (1 - 0.1)
+    assert dominated_hypervolume(staircase, cost_reference=10.0) == pytest.approx(expected)
+
+
+def test_hypervolume_ranks_two_curves_the_way_the_area_does() -> None:
+    """The off-by-one strip could reverse a ranking, not merely inflate both sides."""
+    reaches_low_but_dear = [_point(1.0, 0.9), _point(9.0, 0.05)]
+    cheap_and_middling = [_point(4.0, 0.5), _point(5.0, 0.45)]
+    assert dominated_hypervolume(cheap_and_middling, cost_reference=10.0) > dominated_hypervolume(
+        reaches_low_but_dear, cost_reference=10.0
+    )
+
+
+def test_hypervolume_ignores_points_outside_the_reference_box() -> None:
+    """Only points strictly inside the reference corner contribute.
+
+    Note what does *not* count as outside: a cheap point with a dreadful violation rate is
+    still non-dominated and still dominates a thin strip of its own. Excluding it would
+    understate the frontier, so the box test is against the reference corner alone.
+    """
+    inside = [_point(5.0, 0.2)]
+    too_dear = _point(50.0, 0.01)
+    no_better_than_reference = _point(1.0, 1.0)
+    assert dominated_hypervolume(
+        [*inside, too_dear, no_better_than_reference], cost_reference=10.0
+    ) == pytest.approx(dominated_hypervolume(inside, cost_reference=10.0))
+
+    # A cheap-but-bad point is inside the box and legitimately adds its own strip.
+    assert dominated_hypervolume([*inside, _point(1.0, 0.99)], cost_reference=10.0) == (
+        pytest.approx(4.0 + (5 - 1) * (1 - 0.99))
+    )
+
+
 def test_parity_spec_states_the_budget_every_arm_was_held_to() -> None:
     spec = ParitySpec(
         configurations_per_controller=7,

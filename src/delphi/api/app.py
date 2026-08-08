@@ -281,10 +281,28 @@ _DIST = Path(get_settings().dashboard_dist or "frontend/dist")
 if _DIST.is_dir():
     app.mount("/assets", StaticFiles(directory=_DIST / "assets"), name="assets")
 
+    _DIST_ROOT = _DIST.resolve()
+
     @app.get("/{path:path}", include_in_schema=False)
     def spa(path: str) -> FileResponse:
-        """Serve the SPA shell for any unmatched path."""
-        candidate = _DIST / path
-        if path and candidate.is_file():
+        """Serve the SPA shell for any unmatched path.
+
+        **The candidate is resolved and confined to the dist directory.** Without that,
+        ``_DIST / path`` walks straight out of it: percent-encoded traversal such as
+        ``/..%2f..%2frequirements-serve.txt`` or ``/%2e%2e/%2e%2e/etc/hostname`` survives
+        URL normalisation, reaches this handler intact, and served arbitrary files off the
+        container — as root, in the deploy image. Render's edge happened to reject those
+        requests with a 400, but an accident at the CDN is not a security control, and
+        anyone running the documented ``docker run`` locally had no such cover.
+
+        ``resolve()`` also collapses symlinks, so a link inside ``dist`` cannot be used to
+        step outside it either. An absolute ``path`` would make ``/`` discard the root
+        entirely; the containment check catches that case too.
+        """
+        index = _DIST_ROOT / "index.html"
+        if not path:
+            return FileResponse(index)
+        candidate = (_DIST_ROOT / path).resolve()
+        if candidate.is_file() and candidate.is_relative_to(_DIST_ROOT):
             return FileResponse(candidate)
-        return FileResponse(_DIST / "index.html")
+        return FileResponse(index)

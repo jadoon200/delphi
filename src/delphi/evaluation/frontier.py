@@ -13,6 +13,7 @@ Two rules from the evaluation doctrine are implemented here rather than left to 
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from itertools import pairwise
 
 import numpy as np
 import numpy.typing as npt
@@ -122,19 +123,25 @@ def dominated_hypervolume(
     A scalar summary for when one is genuinely needed. Larger is better. It is reported
     only alongside its reference point, because a hypervolume without its reference is
     meaningless and trivially manipulable.
+
+    The staircase runs *forward* from each point: over the cost interval between one
+    frontier point and the next, the best violation rate available is the **cheaper**
+    point's, because the dearer one cannot be afforded yet. An earlier version credited each
+    strip with the dearer point's rate and started the sweep at cost zero, which double
+    counted a single-point frontier and could reverse the ranking of two curves.
     """
-    front = pareto_front(points)
+    front = [
+        point
+        for point in pareto_front(points)
+        if point.cost < cost_reference and point.violation_rate < violation_reference
+    ]
     if not front:
         return 0.0
     area = 0.0
-    previous_cost = 0.0
-    for point in front:
-        if point.cost >= cost_reference or point.violation_rate >= violation_reference:
-            continue
-        width = point.cost - previous_cost
-        area += width * (violation_reference - point.violation_rate)
-        previous_cost = point.cost
-    area += (cost_reference - previous_cost) * (violation_reference - front[-1].violation_rate)
+    for current, following in pairwise(front):
+        area += (following.cost - current.cost) * (violation_reference - current.violation_rate)
+    last = front[-1]
+    area += (cost_reference - last.cost) * (violation_reference - last.violation_rate)
     return float(max(area, 0.0))
 
 

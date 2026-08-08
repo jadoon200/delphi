@@ -146,6 +146,52 @@ class SimulationResult:
         }
 
 
+class ActuationTracker:
+    """Incremental form of the actuation delay: one step in, one serving count out.
+
+    This exists so there is exactly **one** implementation of the lag. A controller that
+    paces itself against its own past decisions has to reconstruct what was actually
+    serving, and the obvious way to do that is to re-derive the rule — which is what C5/C6
+    did, and which meant that fixing the clock-restart bug in `apply_actuation_delay` left a
+    stale copy in `adaptive.py` silently feeding the PI loop a capacity trace that froze at
+    the initial replica count. A shared object cannot drift from itself.
+    """
+
+    def __init__(self, profile: CapacityProfile, *, initial: int) -> None:
+        self._profile = profile
+        self._current = int(initial)
+        self._pending: int | None = None
+        self._pending_at = 0
+
+    @property
+    def current(self) -> int:
+        """What is serving right now, after everything already landed."""
+        return self._current
+
+    def advance(self, step: int, requested: int) -> int:
+        """Register the request for ``step`` and return what is serving at ``step``.
+
+        Superseding retargets the change in flight and keeps its original landing step:
+        pods already starting do not begin again because the desired count moved.
+        """
+        target = int(requested)
+        if self._pending is None:
+            if target != self._current:
+                lag = (
+                    self._profile.startup_steps
+                    if target > self._current
+                    else self._profile.teardown_steps
+                )
+                self._pending = target
+                self._pending_at = step + max(lag, 0)
+        elif target != self._pending:
+            self._pending = target
+        if self._pending is not None and step >= self._pending_at:
+            self._current = self._pending
+            self._pending = None
+        return self._current
+
+
 def apply_actuation_delay(requested: IntArray, profile: CapacityProfile) -> IntArray:
     """Turn a requested trajectory into the capacity that is actually serving.
 
@@ -164,26 +210,10 @@ def apply_actuation_delay(requested: IntArray, profile: CapacityProfile) -> IntA
     unrequestable state that silently penalises exactly the smooth, forecast-driven
     controllers this project exists to evaluate.
     """
-    steps = len(requested)
-    provisioned = np.empty(steps, dtype=np.int64)
-    current = int(requested[0])
-    pending_target: int | None = None
-    pending_at = 0
-
-    for step in range(steps):
-        target = int(requested[step])
-        if pending_target is None:
-            if target != current:
-                lag = profile.startup_steps if target > current else profile.teardown_steps
-                pending_target = target
-                pending_at = step + max(lag, 0)
-        elif target != pending_target:
-            # Retarget the in-flight change, keeping its original landing step.
-            pending_target = target
-        if pending_target is not None and step >= pending_at:
-            current = pending_target
-            pending_target = None
-        provisioned[step] = current
+    tracker = ActuationTracker(profile, initial=int(requested[0]))
+    provisioned = np.empty(len(requested), dtype=np.int64)
+    for step in range(len(requested)):
+        provisioned[step] = tracker.advance(step, int(requested[step]))
     return provisioned
 
 
@@ -216,8 +246,19 @@ def _synthesize_arrivals(
 
     Arrivals are placed uniformly at random inside their step, which reproduces a Poisson
     process conditioned on the per-step count. Service times are exponential with a mean
-    implied by ``capacity_per_replica`` so that one replica serves exactly that many units
-    per step on average — keeping the two fidelities describing the same physical system.
+    implied by ``capacity_per_replica``, so one replica serves exactly that many units per
+    step on average.
+
+    **The two fidelities are not the same physical system, and this docstring used to claim
+    they were.** ``utilisation_target`` derates capacity in the utilisation model — a
+    replica there absorbs ``capacity_per_replica * utilisation_target`` per step — but the
+    queue model applies no such derate, because a queue expresses congestion through waiting
+    time rather than through a headroom ceiling. At a target of 0.8 the queue therefore runs
+    at rho = 0.8 where the utilisation model reports a step exactly at its limit. That is
+    defensible for two models answering different questions, but it means their absolute
+    numbers are not comparable and must never share a results table. Every published result
+    in `docs/EVAL.md` uses the utilisation model; the queue exists to validate the simulator
+    against Erlang-C, where ``utilisation_target`` is set to 1.0 and the discrepancy is nil.
     """
     counts = np.rint(np.maximum(demand, 0.0)).astype(np.int64)
     total = int(counts.sum())

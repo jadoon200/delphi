@@ -1,9 +1,12 @@
 """Degenerate, determinism, and actuation-delay checks for the replay simulator."""
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 
 from delphi.control.simulator import (
+    ActuationTracker,
     CapacityProfile,
     CostModel,
     apply_actuation_delay,
@@ -69,6 +72,34 @@ def test_a_continuously_changing_request_still_lands() -> None:
     # And a ramp that settles must reach the level it settled on.
     settling = np.asarray([1, 2, 3, 4, 5, 6, 6, 6, 6, 6, 6, 6], dtype=np.int64)
     assert apply_actuation_delay(settling, profile).tolist()[-1] == 6
+
+
+def test_tracker_reproduces_the_batch_actuation_delay() -> None:
+    """The incremental and batch forms must agree on every plan, including erratic ones."""
+    profile = _profile(startup_seconds=180.0, teardown_seconds=60.0)
+    rng = np.random.default_rng(20260809)
+    for _ in range(200):
+        plan = np.clip(np.cumsum(rng.integers(-3, 4, size=60)) + 20, 1, None).astype(np.int64)
+        tracker = ActuationTracker(profile, initial=int(plan[0]))
+        incremental = [tracker.advance(step, int(plan[step])) for step in range(len(plan))]
+        assert incremental == apply_actuation_delay(plan, profile).tolist()
+
+
+def test_only_the_simulator_implements_the_actuation_lag() -> None:
+    """No second copy of the lag rule anywhere in the package.
+
+    C5/C6 previously re-derived it to pace themselves against their own past decisions.
+    When the clock-restart bug was fixed in `apply_actuation_delay`, that copy was left
+    stale, and the budget pacer spent every run correcting against a capacity trace frozen
+    at its initial replica count. The suite could not see it. This can.
+    """
+    root = Path(__file__).resolve().parents[1] / "src" / "delphi"
+    offenders = [
+        path.relative_to(root)
+        for path in root.rglob("*.py")
+        if path.name != "simulator.py" and "pending_at" in path.read_text()
+    ]
+    assert not offenders, f"actuation lag re-implemented outside simulator.py: {offenders}"
 
 
 def test_zero_actuation_delay_makes_the_plan_immediate() -> None:

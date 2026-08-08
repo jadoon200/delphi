@@ -1196,3 +1196,107 @@ would mean something.
   forecastability literature.
 - **The one measure that showed signal does not survive multiple-comparison correction**, and
   is reported as a lead rather than promoted into the product.
+
+---
+
+# Full-codebase audit (2026-08-09)
+
+The 2026-08-03 audit covered M0–M3 and the 2026-08-08 one covered the control and product
+layers. This pass covered what neither did: the queueing core, the adaptive controllers, the
+Pareto machinery, the price client, and the deployed container. Four defects, one of them a
+live security hole.
+
+## 1. The budget pacer was steering on a frozen capacity trace
+
+`adaptive.py` carried its **own copy** of the actuation-delay rule, so C5/C6 could reconstruct
+what their past requests would have served and pace against it. When the clock-restart bug
+was fixed in `apply_actuation_delay` on 2026-08-08, that copy was left behind — still
+restarting the clock, still freezing.
+
+Measured on a plan that moves every step, which is exactly what C5/C6 emit: the mirror
+reported a flat 13 replicas for 40 steps while the simulator provisioned 13 → 24. **36 of 40
+steps disagreed**, so the PI loop spent every run correcting against violations that never
+happened.
+
+Fixed by extracting `ActuationTracker`, with `apply_actuation_delay` implemented on top of it
+so the batch and incremental forms *cannot* diverge. A test asserts they agree over 200
+random plans, and another fails if the lag rule is re-implemented anywhere outside
+`simulator.py` — this being the second time a copy of it drifted.
+
+**Effect on published results: small and no conclusion moves.** Re-running the frontier
+changes only C5/C6 rows: cost 66.6 → 66.5, churn 180 → 176, violation rates shifting by
+around 0.001–0.008 in both directions. Q4 is bit-for-bit unchanged at 9 better / 3 tie / 6
+worse of 18, and the "wins below 19:1, loses above" pattern holds. The GPU frontier verdict
+is unchanged at 0 of 8.
+
+## 2. Path traversal in the deployed dashboard
+
+The SPA catch-all joined the request path onto the dist directory and served whatever it
+found. Percent-encoded traversal survives URL normalisation, reaches the handler intact, and
+read arbitrary files off the container:
+
+```
+/..%2f..%2frequirements-serve.txt   -> served the file
+/%2e%2e/%2e%2e/%2e%2e/etc/hostname  -> served the file
+```
+
+Verified against the real deploy image under uvicorn, not merely in a test client. **The
+container also ran as root**, so this was an arbitrary read of everything in it. No
+credentials exist to steal — the project is keyless by design — but the source, the
+dependency manifest and every system file were readable.
+
+Render's edge happened to reject the encoded forms with a 400, so the live site was not
+exploitable. That is an accident of the CDN rather than a control, and anyone following the
+README's `docker run` had no such cover.
+
+Fixed by resolving the candidate and requiring it to stay inside dist — which also closes
+symlink escapes and absolute-path injection — and by dropping to an unprivileged user in the
+image. Both are now asserted in the deploy-image CI lane against the running container, so a
+regression fails the build rather than the internet.
+
+## 3. Hypervolume was measuring the wrong staircase
+
+`dominated_hypervolume` swept from cost zero and credited each strip with the *dearer*
+point's violation rate, when over that interval only the cheaper point is affordable. A
+single point at cost 5 with a 0.2 violation rate against a reference corner at cost 10
+returned 8.0 where the true dominated rectangle is 5 x 0.8 = **4.0**.
+
+This is not merely an inflation: it can reverse a ranking. A frontier reaching a 0.05
+violation rate at cost 9 scored *above* one sitting at 0.45 for cost 5, where the corrected
+areas are 1.75 and 3.25 respectively.
+
+The existing test compared two frontiers where the error cancelled, so it passed throughout.
+It now checks areas computed by hand. **No published result used this function** — it is
+reported nowhere in this document — so nothing downstream moves.
+
+## 4. The two fidelities were documented as the same system
+
+`_synthesize_arrivals` claimed its service-time construction kept the utilisation and queue
+models "describing the same physical system". They do not: `utilisation_target` derates
+capacity in the utilisation model but is not applied in the queue, so at a target of 0.8 the
+queue runs at rho = 0.8 where the utilisation model reports a step exactly at its limit.
+
+Defensible for two models answering different questions, and harmless in practice — every
+published result uses the utilisation model, and the Erlang-C validation sets the target to
+1.0 where the discrepancy vanishes — but the docstring asserted something false about the
+code. Corrected to state the difference and why it does not contaminate anything.
+
+## Verified sound
+
+The ACI update rule reproduces the published BACC form exactly, including the sign of the
+correction under miscoverage. `pareto_front` is a correct two-objective sweep.
+`cost_at_matched_violation` reports unreachable targets as unreachable rather than
+substituting the nearest point. `parse_price_items` skips rows with a missing or non-positive
+price rather than defaulting them, which would otherwise drive the newsvendor ratio to buy
+unbounded capacity. `cheapest_hourly` refuses to convert monthly reservations into hourly
+prices. The OData filter is now escaped — not a live injection path, since the values come
+from config, but an apostrophe would have silently returned the wrong SKU's price.
+
+## Added to the negatives ledger
+
+- **A duplicated implementation of the actuation lag drifted from its original**, for the
+  second time, and fed a control loop a capacity trace that never moved.
+- **The deployed container was vulnerable to path traversal and ran as root.** It was
+  unexploitable in production only because of a CDN behaviour nobody had designed for.
+- **A Pareto summary statistic could rank two frontiers backwards**, and its test passed
+  because the error cancelled between the two curves being compared.

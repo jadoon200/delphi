@@ -22,7 +22,7 @@ import numpy.typing as npt
 
 from delphi.control.controllers import ControlContext, PercentileRecommender, _replicas_for
 from delphi.control.newsvendor import CostRatio, interpolate_quantile
-from delphi.control.simulator import clamp_plan
+from delphi.control.simulator import ActuationTracker, clamp_plan
 from delphi.forecast.calibration import AdaptiveConformalCalibrator
 from delphi.forecast.contracts import QuantileForecaster
 
@@ -127,10 +127,9 @@ def _plan_calibrated(
     # raw forecast value emitted for each step, so its residual can be scored once the
     # true demand for that step becomes observable
     raw_for_step: dict[int, float] = {}
-    # incremental mirror of the simulator's actuation delay, over our own plan
-    current = int(requested[0])
-    pending_target: int | None = None
-    pending_at = 0
+    # incremental mirror of the simulator's actuation delay, over our own plan. Shares the
+    # simulator's implementation rather than restating it, so the two cannot drift.
+    tracker = ActuationTracker(profile, initial=int(requested[0]))
     served: dict[int, int] = {}
     settled = context.start_step
 
@@ -182,16 +181,7 @@ def _plan_calibrated(
             raw_for_step[target_step] = raw
 
             # advance our mirror of the platform's actuation lag one step
-            asked = int(requested[target_step])
-            in_flight = pending_target if pending_target is not None else current
-            if asked != in_flight:
-                lag = profile.startup_steps if asked > current else profile.teardown_steps
-                pending_target = asked
-                pending_at = target_step + max(lag, 0)
-            if pending_target is not None and target_step >= pending_at:
-                current = pending_target
-                pending_target = None
-            served[target_step] = current
+            served[target_step] = tracker.advance(target_step, int(requested[target_step]))
 
         step += block
 
