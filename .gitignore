@@ -2,6 +2,8 @@
 .env
 .venv/
 .claude/
+CLAUDE.md
+AGENTS.md
 __pycache__/
 *.py[cod]
 .pytest_cache/
