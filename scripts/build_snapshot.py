@@ -252,8 +252,13 @@ def findings() -> list[Finding]:
                 "(AUC 0.396 and 0.456). The one candidate showing signal — the share of "
                 "spectral power slower than the commitment window — reaches AUC 0.700 at 12 "
                 "hours but does not survive Bonferroni across the six tests run, so it is "
-                "recorded as a lead rather than promoted. What survives: below r=0.20, "
-                "forecasting failed to pay on every population tested."
+                "recorded as a lead rather than promoted. That lead was then pre-registered "
+                "and tested on 80 fresh workloads disjoint from the ones that produced it: "
+                "it fell from AUC 0.700 to 0.526 (one-sided p=0.36) against a design with "
+                "roughly 0.9 power, so it was the winner's curse and is refuted. Spectral "
+                "entropy scored 0.499 on the same fresh cohort. Three training-free measures "
+                "tried, three failed. What survives: below r=0.20, forecasting failed to pay "
+                "on every population tested."
             ),
         ),
     ]

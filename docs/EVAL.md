@@ -1300,3 +1300,73 @@ from config, but an apostrophe would have silently returned the wrong SKU's pric
   unexploitable in production only because of a CDN behaviour nobody had designed for.
 - **A Pareto summary statistic could rank two frontiers backwards**, and its test passed
   because the error cancelled between the two curves being compared.
+
+---
+
+# Q13b — the lead did not replicate (2026-08-09)
+
+Pre-registered in `docs/PREREGISTRATION-Q13B.md` and committed, with the complete analysis
+script, **before the confirmatory data existed**. The commit order is checkable in the git
+history and is the only thing that makes the rest of this section worth reading.
+
+## Result
+
+One measure, one horizon, one test, on 80 workloads drawn fresh and explicitly disjoint from
+the 43 the lead was found on.
+
+| | exploratory (2026-08-08) | confirmatory (2026-08-09) |
+|---|---:|---:|
+| low-frequency power, AUC @ 12 h | 0.700 | **0.526** |
+| p | 0.027 (one of six tests) | **0.359** (one-sided, pre-registered) |
+| n measurable | 34 | 69 |
+
+**Not confirmed.** The effect all but vanished. The design had roughly 0.9 power against a
+true AUC of 0.700, so this is not a near miss on an underpowered test — 0.526 is what a
+measure with essentially no signal looks like.
+
+The honest reading is the boring one: **0.700 was the winner's curse.** It was the largest of
+six AUCs computed on 34 workloads, and the largest of six noisy estimates is biased upward by
+construction. Regression to the mean did the rest.
+
+## Secondary, and deliberately not acted on
+
+On the same fresh cohort, daily autocorrelation scored **AUC 0.601** and spectral
+predictability **0.499**.
+
+Autocorrelation scoring highest is exactly the sort of result that invites a second bite:
+declare it vindicated, rebuild the diagnostic around it, quote 0.601. That is forbidden here
+and the pre-registration says so in advance. These are descriptive numbers carrying no alpha,
+computed on n = 69, where the permutation null from the exploratory run put the 95% ceiling
+near 0.68 — so 0.601 is inside the noise band and establishes nothing. **No claim is made
+from it, and the shipped diagnostic does not change.**
+
+## What this closes
+
+- **The low-frequency power measure is refuted**, not merely unconfirmed. It had one
+  well-powered pre-registered chance and did not take it.
+- **Spectral entropy is refuted twice over.** It lost the exploratory race (AUC 0.396 and
+  0.456) and scored 0.499 — chance, to three decimals — on fresh data.
+- **No training-free measure tested predicts whether forecasting pays on individual
+  serverless workloads.** Daily autocorrelation, spectral entropy, and horizon-relative
+  spectral power have all now been tried and all have failed on that population.
+
+The diagnostic therefore stays exactly where Q13 left it: **valid on fleet-aggregate demand,
+where it calls 27 of 28 cells correctly, and scoped out of everything else on the page a
+visitor reads.** That scope is now supported by two independent failures to extend it rather
+than one.
+
+## A prediction of ours that was wrong, recorded as such
+
+After the literature review on 2026-08-08 this project recommended replacing daily
+autocorrelation with spectral entropy, calling it "the clearest improvement available". The
+forecastability literature does support spectral measures in general, and the reasoning was
+sound in the abstract. **On this problem it was wrong**, and measured twice to be wrong. The
+recommendation is withdrawn from the README.
+
+## Added to the negatives ledger
+
+- **The Q13 replacement measure failed to replicate**, 0.700 → 0.526, against a
+  pre-registered hypothesis with ~0.9 power.
+- **A promising exploratory AUC was the winner's curse**, and pre-registration is what caught
+  it rather than hindsight.
+- **This project publicly recommended an improvement that its own next experiment refuted.**

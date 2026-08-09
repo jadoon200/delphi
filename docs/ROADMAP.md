@@ -54,6 +54,11 @@ it measured is narrower and more useful:
    ignoring the diagnostic entirely — with a non-monotone relationship that no version of
    the rule predicted. Only the bottom of the range transfers: below ~0.20, forecasting
    failed to pay on both populations.
+5. **Q13b: the replacement does not work either.** Spectral entropy, the field's standard
+   forecastability measure, scored at chance on a fresh cohort. A horizon-relative spectral
+   measure reached AUC 0.700 exploratorily, was pre-registered, and fell to 0.526 — the
+   winner's curse, caught by pre-registration rather than by hindsight. Three measures
+   tried, three failed, so the diagnostic is scoped rather than patched.
 
 The shipped artifact is therefore a **diagnostic that tells you whether to build a forecaster
 at all**, scoped to aggregated demand and stating that scope on its own results page. That is
