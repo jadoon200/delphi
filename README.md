@@ -8,13 +8,22 @@ series and get a verdict. On a free tier, so the first request after an idle per
 about a minute to wake the container; the snapshot is baked at image build and the badge
 says `demo` because it is.
 
+> **The infrastructure lane of the portfolio.** Sibling to
+> [SENTINEL](https://github.com/jadoon200/sentinel) (cyber threat intelligence),
+> [ARGUS](https://github.com/jadoon200/argus) (all-source fusion),
+> [PHAROS](https://github.com/jadoon200/pharos) (maritime) and
+> [HORUS](https://github.com/jadoon200/horus) (air). Those four are detection systems:
+> signal → anomaly → incident → human review. DELPHI is a decision system: forecast →
+> uncertainty → cost-weighted choice → plan → measured consequence. The evaluation problem
+> differs in kind, because you have to reason about an action you did not take.
+
 DELPHI set out to show that a calibrated forecast beats conventional autoscaling. Measured
 against the recommender Kubernetes actually ships, it mostly does not. The useful result is
 the boundary: forecasting pays when capacity is committed for hours at a time *and* demand
 has real daily structure, and a single number you can compute in seconds tells you which
 side of that boundary you are on.
 
-## The three findings
+## The four findings
 
 1. **In the autoscaling regime, forecasting loses to a trailing percentile.** Demand is
    ~0.98 autocorrelated at one minute on every workload measured here, so recent load

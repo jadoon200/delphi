@@ -31,7 +31,6 @@ marketing document.
 | Milestone | Decision | Reason |
 |---|---|---|
 | M9–M13 — specialist agents | **Cut** | The pre-registered cut order chose the GPU lane over the agent layer when the two competed for the same days. The agent layer's own pre-registered expectation (Q5) was that it would *not* improve decision quality, only auditability — so cutting it removes a likely-null result rather than a likely finding. The decision ledger it would have written is not claimed anywhere in the product. |
-
 | M18 — Alibaba spot-GPU | **Cut** | No licence file at the repository root; the zero-cost audit will not redistribute or depend on unclearly licensed data. |
 | M19 — carbon-aware deferral | **Cut** | Elegant, not load-bearing. First on the pre-registered cut list. |
 | M24 — live Wikimedia lane | **Cut** | Replay carries the argument; a live arrival process is presentation, not evidence. |
