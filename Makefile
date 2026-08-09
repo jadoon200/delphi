@@ -1,4 +1,4 @@
-.PHONY: env install lint typecheck test check up down migrate fetch-azure ingest-azure evaluate evaluate-calibration validate-simulator evaluate-frontier evaluate-gpu evaluate-commitment evaluate-joint evaluate-threshold evaluate-predictability evaluate-q13b snapshot api
+.PHONY: env install lint typecheck test check up down migrate fetch-azure ingest-azure evaluate evaluate-calibration validate-simulator evaluate-frontier evaluate-gpu evaluate-commitment evaluate-joint evaluate-threshold evaluate-predictability evaluate-q13b evaluate-foundation snapshot api
 
 env:
 	conda create -y -n delphi python=3.12
@@ -16,6 +16,9 @@ typecheck:
 
 test:
 	pytest
+
+test-foundation:
+	pytest -m foundation
 
 check: lint typecheck test
 
@@ -61,6 +64,9 @@ evaluate-predictability:
 
 evaluate-q13b:
 	python scripts/evaluate_q13b.py
+
+evaluate-foundation:
+	python scripts/evaluate_foundation.py
 
 snapshot:
 	python scripts/build_snapshot.py

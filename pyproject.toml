@@ -53,6 +53,22 @@ mypy_path = "src"
 files = ["src/delphi"]
 explicit_package_bases = true
 
+# Scoped per PLAN.md: `ignore_missing_imports` only where stubs genuinely do not exist.
+# chronos-forecasting ships no py.typed marker and is an optional extra, so the M17 module
+# is the only place it is imported and the only place this applies.
+[[tool.mypy.overrides]]
+module = ["chronos.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+# M17's tests run in their own process. torch and lightgbm each load an OpenMP runtime, and
+# on macOS the two together segfault the interpreter partway through a combined run — the
+# suite passes as 201 without them and as 3 on its own, and crashes only when both are in
+# one process. Masking it with KMP_DUPLICATE_LIB_OK risks silent memory corruption, so the
+# optional extra is simply kept out of the default run: `make test-foundation`.
+addopts = "-m 'not foundation'"
+markers = [
+    "foundation: optional M17 foundation-model tests; require chronos-forecasting",
+]
