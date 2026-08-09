@@ -2,8 +2,30 @@
 
 DELPHI evaluates forecasts with chronological rolling origins. Split boundaries travel with
 every result; normalization and MASE scaling use training history only. The controller-facing
-selection metric will be newsvendor loss once M4–M6 exist, so forecast accuracy alone never
-decides the shipped controller.
+selection metric is newsvendor loss, so forecast accuracy alone never decides the shipped
+controller.
+
+## How to read this document
+
+It is written in **chronological order** and it is long, because it records what was measured
+as it was measured rather than being rewritten each time the answer changed. Two consequences
+for a reader:
+
+* **Later sections overturn earlier ones**, and where they do, the earlier table carries a
+  ⚠️ SUPERSEDED banner linking forward. The originals are kept so a correction can be checked
+  against what it replaced, not to be read as current.
+* **Two corrections are large enough to change headline answers**: the
+  [actuation-delay bug (2026-08-08)](#correction-the-actuation-delay-bug-and-what-it-changed-2026-08-08),
+  which invalidated every autoscaling-regime number and reversed Q1, and the
+  [full-codebase audit (2026-08-09)](#full-codebase-audit-2026-08-09).
+
+If you want the conclusions without the history, read `docs/ROADMAP.md`. If you want to know
+whether to believe them, read this in order.
+
+**Where the questions ended up:** Q1 refuted · Q2 confirmed · Q3 confirmed · Q4 confirmed ·
+Q5, Q7, Q8 cut with the agent and carbon lanes · Q6 confirmed · Q9 refuted (the registered
+*direction* was wrong) · Q10 confirmed · Q11 confirmed · Q12 refuted · Q13 refuted ·
+Q13b not confirmed.
 
 ## M2 baseline protocol
 
@@ -117,6 +139,12 @@ not only as the scalar summaries above.
 
 Nothing downstream is trustworthy unless this passes, so it is a gate, not a task. Run
 `make validate-simulator`; the script prints its own verdict.
+
+> **Read this alongside the [2026-08-08 correction](#correction-the-actuation-delay-bug-and-what-it-changed-2026-08-08).**
+> Every check below passed for five days while the simulator carried an actuation-delay bug
+> that froze capacity under any continuously-changing plan, and passed again unchanged after
+> it was fixed. A green gate here means the checks ran, not that the simulator is right. The
+> table stands; the confidence it invites does not.
 
 | Check | Result |
 |---|---|
@@ -801,7 +829,14 @@ away.**
 
 So the honest statement is: daily autocorrelation **orders** these workloads well and
 predicts the extremes reliably, but it is not a calibrated boundary and a value near 0.45–0.50
-does not settle the question. The dashboard says as much, and Q13 remains **open**.
+does not settle the question. The dashboard says as much, and Q13 was **open** at the time of
+writing.
+
+> **Since superseded.** Q13 was answered on 2026-08-08 and is **refuted** — the threshold does
+> not generalise beyond fleet aggregates. The replacement measure was then pre-registered and
+> failed to replicate (Q13b, 2026-08-09). See
+> [Q13 answered](#q13-answered-the-threshold-does-not-generalise-2026-08-08) and
+> [Q13b](#q13b--the-lead-did-not-replicate-2026-08-09).
 
 ---
 
@@ -1473,3 +1508,101 @@ values across conditions that should have differed.
   experiment at all.
 - **A pre-registered question went unmeasured for the life of the project** while a shipped
   document implied it had been answered.
+
+---
+
+# M17 / Q3 — a foundation model changes nothing that matters (2026-08-09)
+
+Registered: *"On accuracy, marginally at best. On calibration, quite possibly worse. The real
+win is cold start with zero per-workload training."* **Confirmed on all three counts.**
+
+Chronos-Bolt-tiny, zero-shot, no per-workload training. Apache-2.0 per the licence audit, so
+the zero-cost rule holds; it is an **optional extra** (`pip install chronos-forecasting`)
+because torch has no place in a deploy image that serves a precomputed snapshot.
+
+## The ceiling comes first, because it decides the rest
+
+**Chronos-Bolt is trained on quantile levels 0.1–0.9 and cannot express anything outside
+that.** Of the four levels this project sizes capacity at — 0.80, 0.90, 0.95, 0.99 — it
+cannot produce **0.95 or 0.99**. It does not extrapolate and it does not refuse: it returns
+p90 and emits a warning. A newsvendor sizer asking for p95 receives p90 wearing a p95 label.
+
+That is worse than an error, because it looks like an answer. A p95 band that is silently
+p90 under-provisions by exactly the amount the compliance target was supposed to buy, and
+nothing downstream can tell. `test_upper_quantiles_collapse_onto_p90` pins it.
+
+For a project whose thesis is that **a controller consumes a calibrated quantile, not a point
+estimate**, this is the whole finding. The most capable forecaster available cannot supply
+the object the decision layer needs.
+
+## Accuracy — marginal, exactly as registered
+
+MASE at a 24-step horizon, held out. Lower is better; the best per row is what a practitioner
+would have picked.
+
+| workload | seasonal-naive | ets | lightgbm | chronos-bolt |
+|---|---:|---:|---:|---:|
+| `bitbrains-rnd` | **0.665** | 0.817 | 0.833 | 0.868 |
+| `bitbrains-fastStorage` | 1.459 | 0.296 | 0.217 | **0.153** |
+| `materna-1` | 0.822 | **0.531** | 0.911 | 0.774 |
+| `materna-2` | **0.278** | 0.400 | 0.571 | 0.390 |
+| `materna-3` | **0.544** | 2.622 | 1.879 | 2.284 |
+
+**Chronos wins one row of five**, and loses to plain seasonal-naive on three. Its win on
+`bitbrains-fastStorage` is a large one (0.153 against 1.459 for seasonal-naive), and it is
+never catastrophic where it loses except on `materna-3`. Zero-shot, with no per-workload
+fitting, that is a respectable showing — and it is also "marginally at best", which is what
+was registered.
+
+## The decision — identical, everywhere
+
+Forward-commitment dominance on total economic cost at a twelve-hour window, the same test
+the 2026-08-07 study ran.
+
+| workload | daily autocorr | classical best | chronos-bolt |
+|---|---:|---:|---:|
+| `bitbrains-rnd` | +0.248 | 0/4 | **0** |
+| `bitbrains-fastStorage` | +0.197 | 0/4 | **0** |
+| `materna-1` | +0.494 | 0/4 | **0** |
+| `materna-2` | +0.450 | 2/4 | **2** |
+| `materna-3` | +0.469 | 0/4 | **0** |
+
+**Not one cell changes.** Chronos wins where seasonal-naive won and loses where it lost,
+including reproducing the `materna-2` exception exactly. A model trained on billions of
+time-series points, applied zero-shot, arrives at precisely the capacity decisions a
+one-line seasonal-naive baseline arrives at.
+
+Only Chronos was recomputed. The classical columns are quoted from the earlier study rather
+than re-run: the test refits at every window boundary, about 4,600 fits across four
+forecasters, and ETS alone would take roughly four and a half hours single-threaded.
+
+## What this settles
+
+The project has now tested five forecaster families — seasonal-naive, drift, ETS, LightGBM
+and a foundation model — against the same decision. **None of them changes the answer.**
+The commitment result is a property of the demand, not of the predictor: where daily
+structure exists, a crude forecaster captures it; where it does not, no model recovers it.
+
+This is the strongest version of the project's central claim, and it is now supported at
+both ends of the sophistication range rather than asserted from the middle. It also closes
+the caveat left on 2026-08-08, when the LightGBM result had to be narrowed because "the most
+sophisticated model *in this repository*" was not the same as the field's best. It is no
+longer an open question.
+
+## An engineering note that belongs in the record
+
+Installing `chronos-forecasting` made the test suite segfault. torch and lightgbm each load
+an OpenMP runtime and on macOS the pair crashes the interpreter partway through a combined
+run — 201 tests pass without the foundation tests, 3 pass alone, and both together die. The
+mitigation is pinning `OMP_NUM_THREADS=1`, not `KMP_DUPLICATE_LIB_OK`, which suppresses the
+duplicate-runtime check and can corrupt memory silently. The foundation tests are marked and
+excluded from the default run (`make test-foundation`), and CI never installs the extra so
+it skips them cleanly.
+
+## Added to the negatives ledger
+
+- **The Apache-2.0 foundation model cannot express the quantiles a capacity controller
+  consumes**, and clamps to p90 rather than failing, so a miscalibrated band reaches the
+  sizer looking well-formed.
+- **A foundation model changed no capacity decision at all** — five families tested, one
+  answer.

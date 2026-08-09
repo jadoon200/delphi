@@ -106,6 +106,16 @@ make validate-simulator   # the M4 gate — must be GREEN before trusting any re
 make evaluate-commitment  # the headline experiment
 ```
 
+M17's foundation-model comparison needs one optional extra, deliberately absent from
+`requirements.txt` and from the deploy image because torch has no place in a container that
+serves a precomputed snapshot:
+
+```bash
+pip install chronos-forecasting
+make evaluate-foundation
+make test-foundation      # runs separately: torch and lightgbm clash over OpenMP on macOS
+```
+
 Postgres uses host port `5436`, keeping it separate from the sibling portfolio services:
 
 ```bash

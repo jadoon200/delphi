@@ -241,6 +241,26 @@ def findings() -> list[Finding]:
             ),
         ),
         Finding(
+            question_id="Q3",
+            question="Does a foundation model beat a tuned classical baseline?",
+            prior="Marginally at best on accuracy; possibly worse on calibration.",
+            answer=(
+                "No, and more usefully it changes nothing. Chronos-Bolt zero-shot wins one "
+                "accuracy row of five and reproduces the classical capacity decision on every "
+                "workload, cell for cell, including the materna-2 exception."
+            ),
+            verdict="confirmed",
+            evidence=(
+                "The ceiling matters more than the accuracy. Chronos-Bolt is trained on "
+                "quantile levels 0.1-0.9 and cannot express p95 or p99 — it clamps to p90 and "
+                "warns rather than failing, so a sizer asking for p95 receives p90 wearing a "
+                "p95 label. Five forecaster families have now been tested against the same "
+                "decision and none changes it: the commitment result is a property of the "
+                "demand, not of the predictor. Where daily structure exists a crude forecaster "
+                "captures it; where it does not, no model recovers it."
+            ),
+        ),
+        Finding(
             question_id="Q10",
             question="Is there a workload where no controller beats static provisioning?",
             prior="Expected yes.",

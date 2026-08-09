@@ -20,6 +20,7 @@ marketing document.
 | M14 — inference ingest | ✅ | Azure LLM/LMM traces (CC-BY, request-level, 44M requests) in the canonical schema |
 | M15 — serving model | ✅ | Prefill and decode contending for one device in GPU-seconds, with a prewarm penalty |
 | M16 — the structural claim | ✅ | Request-rate versus token-work scaling, measured rather than asserted |
+| M17 — foundation forecasters | ✅ | Chronos-Bolt zero-shot against the classical ladder. Optional extra, absent from the deploy image. Wins 1 accuracy row of 5 and changes **no** capacity decision; cannot express p95 or p99 at all |
 | M20 — read-only API | ✅ | Hardened FastAPI, `snapshot_mode` and `assumptions` on every response, ARGUS-shaped evidence export |
 | M21 — dashboard | ✅ | Diagnostic, workloads, findings and explainer views over a snapshot baked at image build |
 | M22 — explainer | ✅ | A "how it works" view where the limits are as prominent as the results |
@@ -30,7 +31,7 @@ marketing document.
 | Milestone | Decision | Reason |
 |---|---|---|
 | M9–M13 — specialist agents | **Cut** | The pre-registered cut order chose the GPU lane over the agent layer when the two competed for the same days. The agent layer's own pre-registered expectation (Q5) was that it would *not* improve decision quality, only auditability — so cutting it removes a likely-null result rather than a likely finding. The decision ledger it would have written is not claimed anywhere in the product. |
-| M17 — foundation forecasters | **Partly superseded** | The intent was to test whether a bigger model changes the answer. That question got answered with four classical families instead (seasonal-naive, drift, ETS, LightGBM): the most sophisticated of them never won a single cell, because the binding constraint is matching the model to the horizon, not model capacity. Chronos-Bolt/TimesFM remain untested. |
+
 | M18 — Alibaba spot-GPU | **Cut** | No licence file at the repository root; the zero-cost audit will not redistribute or depend on unclearly licensed data. |
 | M19 — carbon-aware deferral | **Cut** | Elegant, not load-bearing. First on the pre-registered cut list. |
 | M24 — live Wikimedia lane | **Cut** | Replay carries the argument; a live arrival process is presentation, not evidence. |
@@ -54,7 +55,11 @@ it measured is narrower and more useful:
    ignoring the diagnostic entirely — with a non-monotone relationship that no version of
    the rule predicted. Only the bottom of the range transfers: below ~0.20, forecasting
    failed to pay on both populations.
-5. **Q13b: the replacement does not work either.** Spectral entropy, the field's standard
+5. **Model capacity is not the binding constraint.** Five forecaster families have now been
+   tested against the same decision — seasonal-naive, drift, ETS, LightGBM and a zero-shot
+   foundation model — and not one changes a single commitment cell. The Apache-2.0 foundation
+   model additionally cannot express p95 or p99, the levels a newsvendor sizer consumes.
+6. **Q13b: the replacement does not work either.** Spectral entropy, the field's standard
    forecastability measure, scored at chance on a fresh cohort. A horizon-relative spectral
    measure reached AUC 0.700 exploratorily, was pre-registered, and fell to 0.526 — the
    winner's curse, caught by pre-registration rather than by hindsight. Three measures

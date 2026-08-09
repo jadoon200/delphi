@@ -46,6 +46,7 @@ from delphi.control.simulator import CapacityProfile, CostModel, simulate
 from delphi.data.azure_functions import load_archive_cohort, select_cohort
 from delphi.data.series import DemandSeries, aggregate_series
 from delphi.forecast.baselines import SeasonalNaiveForecaster
+from delphi.forecast.contracts import QuantileForecaster
 
 ARCHIVE = Path("data/raw/azure-functions-2019.tar.xz")
 BIN_SECONDS = 300
@@ -124,7 +125,9 @@ def economic_cost(capacity_cost: float, unmet: float, workload: Workload, quanti
     return capacity_cost + per_unit_hour * (quantile / (1.0 - quantile)) * unmet
 
 
-def strict_dominance(workload: Workload, window_steps: int) -> tuple[int, int]:
+def strict_dominance(
+    workload: Workload, window_steps: int, forecaster: QuantileForecaster | None = None
+) -> tuple[int, int]:
     """Return (economic wins, ties) out of ``len(QUANTILES)``.
 
     A cell is a win when forward's total economic cost is strictly lower. Ties — both
@@ -138,7 +141,9 @@ def strict_dominance(workload: Workload, window_steps: int) -> tuple[int, int]:
         series=workload.series, profile=workload.profile, start_step=workload.day_steps * 2
     )
     scored = slice(workload.day_steps * 3, None)
-    forecaster = SeasonalNaiveForecaster(workload.day_steps)
+    # Seasonal-naive by default, so every existing caller is unchanged; M17 passes its own.
+    if forecaster is None:
+        forecaster = SeasonalNaiveForecaster(workload.day_steps)
     wins = ties = 0
     for quantile in QUANTILES:
         backward_plan = BackwardCommitmentController(
