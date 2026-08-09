@@ -61,8 +61,16 @@ Two consequences are worth stating up front. The incumbent it measures against i
 Autopilot's percentile recommender, not threshold HPA — beating threshold HPA is routine and
 proves little. And the predictability diagnostic is a cruder instrument than the field's:
 spectral entropy is the established forecastability measure, and a single lagged correlation
-is known to be weaker, which is very likely why it failed to generalise (see Q13). Replacing
-it with spectral entropy is the clearest improvement available to this project.
+is known to be weaker.
+
+That reading suggested an obvious fix, and this project recommended it here. **The fix was
+then measured and it does not work.** Spectral entropy lost to the incumbent measure in an
+exploratory race and scored AUC 0.499 — chance — on a fresh cohort. A horizon-relative
+spectral measure looked promising at AUC 0.700, was pre-registered, and collapsed to 0.526
+on data that had not generated it. Three training-free measures have now been tried on
+individual serverless workloads and all three have failed, which is why the diagnostic is
+scoped to fleet aggregates rather than patched. See Q13 and Q13b in
+[`docs/EVAL.md`](docs/EVAL.md).
 
 ## Read the evaluation
 
