@@ -66,5 +66,9 @@ a considerably smaller claim than the one the project started with, and it is th
 measurements support.
 
 Bitbrains is not on the critical path because its canonical host could not be verified; the
-Materna fleet traces and the synthetic multi-resource regime carry the joint-provisioning
-test without redistributing unclearly licensed data.
+Materna fleet traces stand in for it without redistributing unclearly licensed data.
+
+The joint-provisioning question (Q9) is answered on the synthetic multi-resource regime — see
+`docs/EVAL.md`. This sentence previously claimed that regime "carries the joint-provisioning
+test" while no such experiment existed, which was an overclaim and is corrected rather than
+quietly deleted.

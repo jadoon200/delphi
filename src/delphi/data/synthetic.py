@@ -92,19 +92,45 @@ def generate_multi_resource(
     step_seconds: int = 300,
     seed: int = 20260802,
     start: datetime = datetime(2026, 1, 1, tzinfo=UTC),
+    peak_separation: float = 1.0 / 3.0,
+    peak_width_fraction: float = 1.0 / 64.0,
+    diurnal_phase_offset: float = 0.0,
 ) -> tuple[DemandSeries, DemandSeries]:
-    """Correlated CPU/memory demand with deliberately decorrelated peak intervals."""
+    """Correlated CPU/memory demand with deliberately decorrelated peak intervals.
+
+    ``peak_separation`` is the fraction of the series between the CPU peak and the memory
+    peak. At 0 the two peaks coincide and the resources are effectively one; at the default
+    1/3 they are fully disjoint. Q9 needs to *sweep* that separation rather than assert a
+    single configuration, because the whole question is whether decorrelation is what drives
+    the joint-provisioning penalty. The default reproduces the original fixture exactly.
+    """
     if periods < 96:
         raise ValueError("multi-resource traces require at least 96 points")
+    if not 0.0 <= peak_separation < 1.0:
+        raise ValueError("peak_separation must lie within [0, 1)")
+    if not 0.0 < peak_width_fraction < 0.5:
+        raise ValueError("peak_width_fraction must lie within (0, 0.5)")
+    if not 0.0 <= diurnal_phase_offset <= 1.0:
+        raise ValueError("diurnal_phase_offset must lie within [0, 1]")
     rng = np.random.default_rng(seed)
     index = np.arange(periods, dtype=np.float64)
     steps_per_day = max(2, round(86400 / step_seconds))
     shared = 45.0 + 15.0 * np.sin(2 * np.pi * index / steps_per_day)
+    # A one-shot peak sits in only one half of the series, so a train/test split cannot see
+    # both. `diurnal_phase_offset` lags memory's daily cycle by a fraction of a day, giving
+    # decorrelation that *recurs* — CPU busy in the morning, memory in the evening — which is
+    # both what real multi-resource workloads look like and what a split can actually measure.
+    lagged = 45.0 + 15.0 * np.sin(2 * np.pi * (index / steps_per_day - diurnal_phase_offset))
     cpu = shared + rng.normal(0, 2.0, periods)
-    memory = 0.8 * shared + 12.0 + rng.normal(0, 1.5, periods)
-    width = max(3, periods // 64)
-    cpu_peak = (periods // 3, periods // 3 + width)
-    memory_peak = (2 * periods // 3, 2 * periods // 3 + width)
+    memory = 0.8 * lagged + 12.0 + rng.normal(0, 1.5, periods)
+    # A *spike* narrower than the tail a quantile discards cannot move a quantile-based
+    # sizing decision at all. Q9 needs sustained decorrelated load — a batch window, a
+    # nightly job — so the width is a parameter. The default reproduces the original spike.
+    width = max(3, round(peak_width_fraction * periods))
+    cpu_start = periods // 3
+    memory_start = min(cpu_start + round(peak_separation * periods), periods - width)
+    cpu_peak = (cpu_start, cpu_start + width)
+    memory_peak = (memory_start, memory_start + width)
     cpu[slice(*cpu_peak)] += 40.0
     memory[slice(*memory_peak)] += 35.0
     timestamps = _timestamps(start, periods, step_seconds)

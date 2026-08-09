@@ -1,4 +1,12 @@
-"""Measure raw, static conformal, and ACI p95 coverage through a level shift."""
+"""Measure raw, fixed-margin, static conformal, and ACI p95 coverage through a level shift.
+
+This answers **Q2** — *does conformal calibration beat a fixed safety margin?* The fixed
+margin is the practitioner's alternative and the honest comparator: multiply the raw
+forecast by ``1 + m`` and pick ``m`` as the smallest value hitting nominal coverage **on
+validation only**, the same budget and the same discipline ACI's gamma gets. Comparing
+conformal against an uncalibrated forecast alone would have been a strawman, and for some
+time that is all this experiment did.
+"""
 
 from datetime import UTC, datetime
 
@@ -88,8 +96,39 @@ def main() -> None:
             strict=True,
         )
     )
+    # --- Q2's comparator: a fixed safety margin, tuned on validation only ---------------
+    validation_raw = validation_predicted[:, p95_index]
+    margin = 1.0
+    for candidate in np.linspace(0.0, 1.0, 101):
+        if float(np.mean(validation_actual <= validation_raw * (1.0 + candidate))) >= 0.95:
+            margin = float(candidate)
+            break
+    fixed_margin_predictions = test_predicted[:, p95_index] * (1.0 + margin)
+    # The conventional margin as well as the tuned one. Kubernetes VPA ships a headroom
+    # multiplier and this repo's PercentileRecommender defaults to 0.15, so a comparator
+    # that only reports the tuned value would miss what an operator actually runs.
+    conventional = 0.15
+    conventional_predictions = test_predicted[:, p95_index] * (1.0 + conventional)
+    validation_raw_coverage = float(np.mean(validation_actual <= validation_raw))
+    print(
+        f"Raw p95 already covers {validation_raw_coverage:.1%} on validation, so the "
+        f"smallest margin reaching the 95% target is **+{margin:.0%}** — a margin tuned "
+        f"honestly on stationary data adds no headroom at all. The conventional "
+        f"+{conventional:.0%} is reported alongside it.\n"
+    )
+
     methods = (
         ("raw", test_predicted[:, p95_index], tuple(test_actual <= test_predicted[:, p95_index])),
+        (
+            f"fixed_margin_tuned_{margin:+.0%}",
+            fixed_margin_predictions,
+            tuple(test_actual <= fixed_margin_predictions),
+        ),
+        (
+            f"fixed_margin_conventional_{conventional:+.0%}",
+            conventional_predictions,
+            tuple(test_actual <= conventional_predictions),
+        ),
         ("split_conformal", static_predictions, tuple(test_actual <= static_predictions)),
         (
             f"aci_gamma_{gamma.gamma:g}",
