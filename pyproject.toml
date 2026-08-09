@@ -54,10 +54,12 @@ files = ["src/delphi"]
 explicit_package_bases = true
 
 # Scoped per PLAN.md: `ignore_missing_imports` only where stubs genuinely do not exist.
-# chronos-forecasting ships no py.typed marker and is an optional extra, so the M17 module
-# is the only place it is imported and the only place this applies.
+# Both are M17's optional extras, imported only inside `delphi.forecast.foundation`.
+# chronos-forecasting ships no py.typed marker; torch is simply absent from CI, which
+# installs neither — so this override is what makes the module typecheck identically whether
+# the extra is present or not, rather than passing locally and failing on a clean machine.
 [[tool.mypy.overrides]]
-module = ["chronos.*"]
+module = ["chronos.*", "torch.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
