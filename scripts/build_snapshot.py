@@ -179,6 +179,68 @@ def findings() -> list[Finding]:
             ),
         ),
         Finding(
+            question_id="Q2",
+            question="Does conformal calibration beat a fixed safety margin?",
+            prior="Yes under drift, roughly neutral on stationary traces.",
+            answer=(
+                "Yes, on every axis. Through a level shift, adaptive conformal inference holds "
+                "better coverage than the conventional +15% headroom margin (0.924 vs 0.917) "
+                "while provisioning 11% less capacity, and recovers in 28 steps where the "
+                "margin never recovers inside the window."
+            ),
+            verdict="confirmed",
+            evidence=(
+                "The comparator matters and for some time this experiment lacked one, "
+                "measuring conformal only against an uncalibrated forecast. Two fixed margins "
+                "are now reported. The tuned one is the more instructive: raw p95 already "
+                "covers 96.9% on the stationary validation stream, so the smallest margin "
+                "reaching the 95% target is +0% — an operator tuning headroom honestly on "
+                "quiet data adds none, and is then wholly unprotected when the level moves. "
+                "A fixed margin cannot recover from drift because it does not respond to it."
+            ),
+        ),
+        Finding(
+            question_id="Q9",
+            question="Do independent per-resource forecasts misprovision the joint plan?",
+            prior="Yes, they over-provision; the interesting part is by how much.",
+            answer=(
+                "They misprovision, but in the opposite direction to the one registered: "
+                "independent sizing under-provisions. Asked for 90% coverage it delivers "
+                "84.4% when CPU and memory move together and 80.2% when they are anti-phase, "
+                "against a joint plan's steady 96.9%."
+            ),
+            verdict="refuted",
+            evidence=(
+                "A replica is sized by whichever resource is tightest, so the requirement is "
+                "max(cpu/cpu_per, memory/memory_per). Because max(a,b) >= a, the joint "
+                "quantile is never below either marginal one and combining independently "
+                "sized resources can only buy less — the registered direction was wrong on "
+                "arithmetic alone. The shortfall widens monotonically as correlation falls "
+                "from +0.78 to -0.77: the more the peaks avoid each other, the more often the "
+                "resource you are not watching is the binding one. You cannot reach a joint "
+                "SLO from one dashboard per resource."
+            ),
+        ),
+        Finding(
+            question_id="Q6",
+            question="Is CPU-threshold scaling structurally wrong for GPU inference?",
+            prior="Expected yes, expected large, expected to widen with cold start.",
+            answer=(
+                "Yes. Tracking request rate instead of token work correlates at 0.9961 and "
+                "still under-provisions by 39% in the tail, because correlation says nothing "
+                "about the peaks that breach an SLO."
+            ),
+            verdict="confirmed",
+            evidence=(
+                "Every proxy is rescaled to the true demand's mean first, so what remains is "
+                "error in shape rather than a constant anyone could retune. Measured on the "
+                "Azure LLM inference traces where prefill and decode contend for one device. "
+                "This was carried out under its milestone number and went some time without "
+                "being tied back to the question it answers, which is a bookkeeping failure "
+                "in a project whose central discipline is exactly that ledger."
+            ),
+        ),
+        Finding(
             question_id="Q10",
             question="Is there a workload where no controller beats static provisioning?",
             prior="Expected yes.",

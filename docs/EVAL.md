@@ -80,16 +80,36 @@ once on the preceding validation stream from `{0.001, 0.005, 0.01, 0.02, 0.05}`;
 on the test trace. Recovery is the first point at which trailing 24-hour coverage returns within
 five percentage points of nominal p95. Run `make evaluate-calibration` to reproduce it.
 
+**This answers Q2** — *does conformal calibration beat a fixed safety margin?* Registered
+expectation: yes under drift, roughly neutral on stationary traces. **Verdict: confirmed.**
+The fixed margin is the honest comparator and for some time this experiment did not include
+one, measuring conformal only against an uncalibrated forecast — which is a strawman. Two are
+now reported: the margin tuned on validation to hit nominal, and the conventional +15% that
+Kubernetes VPA ships and that this repo's own `PercentileRecommender` defaults to.
+
 | Method | p95 coverage | Mean p95 | Recovery steps (24 h window) |
 |---|---:|---:|---:|
 | `raw` | 0.906 | 98.751 | 46 |
+| `fixed_margin_tuned_+0%` | 0.906 | 98.751 | 46 |
+| `fixed_margin_conventional_+15%` | 0.917 | 113.563 | 46 |
 | `split_conformal` | 0.903 | 98.505 | 46 |
-| `aci_gamma_0.05` | 0.927 | 102.122 | 28 |
+| `aci_gamma_0.05` | **0.924** | **101.976** | **28** |
 
-Static split conformal does not survive the distribution shift in this slice: its validation
-correction slightly lowers test coverage. ACI remains below nominal over the full transient but
-cuts recovery time by 18 steps. Coverage is retained observation-by-observation, not only as the
-three scalar summaries above.
+**ACI wins on every axis that matters.** Against the conventional +15% margin it holds better
+coverage (0.924 versus 0.917) while provisioning **11% less capacity** (101.98 versus 113.56),
+and it recovers from the shift in 28 steps where the margin never recovers inside the window
+at all — a fixed margin cannot recover, because it does not respond to anything.
+
+**The tuned margin is the more interesting result.** Raw p95 already covers 96.9% on the
+stationary validation stream, so the smallest margin reaching the 95% target is **+0%**: an
+operator tuning headroom honestly on pre-shift data would add none, and would then be
+completely unprotected when the level moved. Buying safety by tuning a constant on quiet data
+is not conservative, it only looks conservative.
+
+Static split conformal does not survive the distribution shift in this slice either: its
+validation correction slightly lowers test coverage. ACI remains below nominal over the full
+transient but cuts recovery time by 18 steps. Coverage is retained observation-by-observation,
+not only as the scalar summaries above.
 
 ---
 
@@ -294,7 +314,13 @@ lane unchanged rather than introducing a second, unvalidated simulator.
 load — the raw prefill:decode token ratio is 110.7:1 versus 15.5:1. Two workloads on the
 same hardware with completely different capacity shapes.
 
-## M16 — is request-rate autoscaling structurally wrong here?
+## M16 — is request-rate autoscaling structurally wrong here? (**this answers Q6**)
+
+> **Q6, pre-registered:** *Is CPU-threshold scaling structurally wrong for GPU inference?*
+> Registered expectation: yes, large, and widening with `startup_seconds`. **Verdict:
+> confirmed.** The measurement is below; it was carried out under its milestone number and
+> went for some time without being tied back to the question it answers, which is a
+> bookkeeping failure in a project whose central discipline is exactly that ledger.
 
 **Yes, and it is measurable.** Every proxy below is first rescaled to the true demand's
 mean, so what remains is error in *shape*: a proxy that merely needed a different constant
@@ -1370,3 +1396,80 @@ recommendation is withdrawn from the README.
 - **A promising exploratory AUC was the winner's curse**, and pre-registration is what caught
   it rather than hindsight.
 - **This project publicly recommended an improvement that its own next experiment refuted.**
+
+---
+
+# Q9 — independent per-resource sizing, measured at last (2026-08-09)
+
+Registered as *"do independent per-resource forecasts over-provision the joint plan?"* with
+the expectation "yes; the interesting part is by how much". **It had never been run.**
+`generate_multi_resource` existed and was unit-tested, but no experiment used it — while
+`docs/ROADMAP.md` claimed the synthetic regime "carries the joint-provisioning test". It did
+not, and that sentence is now corrected.
+
+## Result: the registered direction is refuted
+
+A replica supplies a fixed amount of each resource, so the replicas needed at time *t* are set
+by whichever resource is tightest: `r_t = max(cpu_t/cpu_per, memory_t/memory_per)`. Sizing on
+the first half of the trace, scoring on the second, with each replica scaled so **either
+resource alone** needs 8 replicas at its own target quantile:
+
+| offset | correlation | joint repl. | indep. repl. | joint coverage | indep. coverage |
+|---:|---:|---:|---:|---:|---:|
+| 0.000 | +0.778 | 9 | 8 | 0.9688 | 0.8442 |
+| 0.125 | +0.529 | 9 | 8 | 0.9688 | 0.8284 |
+| 0.250 | +0.010 | 9 | 8 | 0.9688 | 0.8229 |
+| 0.375 | −0.518 | 9 | 8 | 0.9688 | 0.8075 |
+| 0.500 | −0.770 | 9 | 8 | 0.9688 | **0.8016** |
+
+*(target q = 0.90; `offset` lags memory's daily cycle by a fraction of a day, so 0 means the
+two resources rise together and 0.5 means one peaks while the other troughs.)*
+
+**Independent sizing under-provisions. It does not over-provision.** The arithmetic makes this
+inevitable and the registered expectation had the sign backwards: since `max(a, b) >= a`, the
+quantile of the joint requirement is never below either marginal quantile, so combining
+independently-sized resources can only buy less than the joint plan — never more.
+
+What is genuinely measured is the **coverage** that costs, and how it scales. Asked for 90%,
+the independent method delivers 84.4% when the two resources move together and **80.2%** when
+they are anti-phase, against the joint plan's steady 96.9%. The shortfall widens monotonically
+as correlation falls from +0.78 to −0.77, which is the mechanism showing itself: the more the
+peaks avoid each other, the more often the resource you are not looking at is the binding one.
+
+The practical statement: **you cannot reach a joint SLO by watching one dashboard per
+resource.** The gap is not a tuning error to be closed with headroom on each chart; it is
+structural, and it grows precisely as the resources become more independent.
+
+## Three nulls before a signal, and why they are in the record
+
+The first three designs returned exact zeros, and each was a broken instrument rather than an
+absent effect. They are recorded because a null from an instrument that cannot detect the
+thing is not evidence of absence, and because the sequence is the honest account of how this
+number was arrived at.
+
+1. **Peaks narrower than the tail.** The fixture injects one peak per resource spanning 1.56%
+   of the series. A q = 0.95 quantile discards the top 5%, so the peaks sat entirely inside
+   the discarded region and could not move any sizing decision. Diagnosed by checking where
+   the peaks fell relative to the quantile, *before* interpreting the null.
+2. **Peaks in only one half of the split.** Widening them did not help, because the fixture
+   places the CPU peak at 33% of the series and the memory peak at 66% — so the training half
+   contained only one of them and neither method could size for a peak it had never seen. The
+   fix was decorrelation that *recurs*: anti-phase daily cycles rather than one-shot events,
+   which is also what real multi-resource workloads look like.
+3. **One resource dominating the maximum.** Scaling each replica off the resource's median
+   equalises the two medians but not their ranges, so the wider-swinging resource was the
+   binding one at every single step and decorrelation had nothing to act on — which is why
+   the numbers were identical to four decimal places across every phase offset. Sizing so
+   each resource alone needs the same replicas at its own target quantile fixed it.
+
+Each change was made to an instrument that provably could not see the effect, not to a result
+that was inconvenient. The tell in every case was a null that was *too clean* — identical
+values across conditions that should have differed.
+
+## Added to the negatives ledger
+
+- **Q9's registered direction was wrong.** Independent per-resource sizing under-provisions
+  rather than over-provisions, and the sign follows from `max(a, b) >= a` without needing an
+  experiment at all.
+- **A pre-registered question went unmeasured for the life of the project** while a shipped
+  document implied it had been answered.
